@@ -1,0 +1,3977 @@
+{
+    "paper_id": "ple-paper",
+    "header": {
+        "generated_with": "S2ORC 1.0.0",
+        "date_generated": "2026-09-26T11:09:45.330896Z"
+    },
+    "title": "On Embeddings for Numerical Features in Tabular Deep Learning",
+    "authors": [
+        {
+            "first": "Yury",
+            "middle": [],
+            "last": "Gorishniy",
+            "suffix": "",
+            "affiliation": {},
+            "email": ""
+        },
+        {
+            "first": "Yandex",
+            "middle": [],
+            "last": "Ivan",
+            "suffix": "",
+            "affiliation": {},
+            "email": ""
+        },
+        {
+            "first": "Rubachev",
+            "middle": [],
+            "last": "Hse",
+            "suffix": "",
+            "affiliation": {},
+            "email": ""
+        },
+        {
+            "first": "Yandex",
+            "middle": [],
+            "last": "Artem",
+            "suffix": "",
+            "affiliation": {},
+            "email": ""
+        },
+        {
+            "first": "Babenko",
+            "middle": [],
+            "last": "Yandex",
+            "suffix": "",
+            "affiliation": {},
+            "email": ""
+        }
+    ],
+    "year": "",
+    "venue": null,
+    "identifiers": {},
+    "abstract": "Recently, Transformer-like deep architectures have shown strong performance on tabular data problems. Unlike traditional models, e.g., MLP, these architectures map scalar values of numerical features to high-dimensional embeddings before mixing them in the main backbone. In this work, we argue that embeddings for numerical features are an underexplored degree of freedom in tabular DL, which allows constructing more powerful DL models and competing with gradient boosted decision trees (GBDT) on some GBDT-friendly benchmarks (that is, where GBDT outperforms conventional DL models). We start by describing two conceptually different approaches to building embedding modules: the first one is based on a piecewise linear encoding of scalar values, and the second one utilizes periodic activations. Then, we empirically demonstrate that these two approaches can lead to significant performance boosts compared to the embeddings based on conventional blocks such as linear layers and ReLU activations. Importantly, we also show that embedding numerical features is beneficial for many backbones, not only for Transformers. Specifically, after proper embeddings, simple MLP-like models can perform on par with the attention-based architectures. Overall, we highlight embeddings for numerical features as an important design aspect with good potential for further improvements in tabular DL. The source code is available at https://github.com/yandex-research/tabular-dl-num-embeddings.",
+    "pdf_parse": {
+        "paper_id": "ple-paper",
+        "_pdf_hash": "",
+        "abstract": [
+            {
+                "text": "Recently, Transformer-like deep architectures have shown strong performance on tabular data problems. Unlike traditional models, e.g., MLP, these architectures map scalar values of numerical features to high-dimensional embeddings before mixing them in the main backbone. In this work, we argue that embeddings for numerical features are an underexplored degree of freedom in tabular DL, which allows constructing more powerful DL models and competing with gradient boosted decision trees (GBDT) on some GBDT-friendly benchmarks (that is, where GBDT outperforms conventional DL models). We start by describing two conceptually different approaches to building embedding modules: the first one is based on a piecewise linear encoding of scalar values, and the second one utilizes periodic activations. Then, we empirically demonstrate that these two approaches can lead to significant performance boosts compared to the embeddings based on conventional blocks such as linear layers and ReLU activations. Importantly, we also show that embedding numerical features is beneficial for many backbones, not only for Transformers. Specifically, after proper embeddings, simple MLP-like models can perform on par with the attention-based architectures. Overall, we highlight embeddings for numerical features as an important design aspect with good potential for further improvements in tabular DL. The source code is available at https://github.com/yandex-research/tabular-dl-num-embeddings.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Abstract",
+                "sec_num": null
+            }
+        ],
+        "body_text": [
+            {
+                "text": "Tabular data problems are currently a final frontier for deep learning (DL) research. While the most recent breakthroughs in NLP, vision, and speech are achieved by deep models [12] , their success in the tabular domain is not convincing yet. Despite a large number of proposed architectures for tabular DL [2, 3, 13, 17, 21, 24, 31, 39, 40] , the performance gap between them and the \"shallow\" ensembles of decision trees, like GBDT, often remains significant [13, 36] .",
+                "cite_spans": [
+                    {
+                        "start": 177,
+                        "end": 181,
+                        "text": "[12]",
+                        "ref_id": "BIBREF11"
+                    },
+                    {
+                        "start": 307,
+                        "end": 310,
+                        "text": "[2,",
+                        "ref_id": "BIBREF1"
+                    },
+                    {
+                        "start": 311,
+                        "end": 313,
+                        "text": "3,",
+                        "ref_id": "BIBREF2"
+                    },
+                    {
+                        "start": 314,
+                        "end": 317,
+                        "text": "13,",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 318,
+                        "end": 321,
+                        "text": "17,",
+                        "ref_id": "BIBREF16"
+                    },
+                    {
+                        "start": 322,
+                        "end": 325,
+                        "text": "21,",
+                        "ref_id": "BIBREF20"
+                    },
+                    {
+                        "start": 326,
+                        "end": 329,
+                        "text": "24,",
+                        "ref_id": "BIBREF23"
+                    },
+                    {
+                        "start": 330,
+                        "end": 333,
+                        "text": "31,",
+                        "ref_id": "BIBREF30"
+                    },
+                    {
+                        "start": 334,
+                        "end": 337,
+                        "text": "39,",
+                        "ref_id": "BIBREF38"
+                    },
+                    {
+                        "start": 338,
+                        "end": 341,
+                        "text": "40]",
+                        "ref_id": "BIBREF39"
+                    },
+                    {
+                        "start": 461,
+                        "end": 465,
+                        "text": "[13,",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 466,
+                        "end": 469,
+                        "text": "36]",
+                        "ref_id": "BIBREF35"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Introduction",
+                "sec_num": "1"
+            },
+            {
+                "text": "The recent line of works [13, 24, 39] reduce this performance gap by successfully adapting the Transformer architecture [45] for the tabular domain. Compared to traditional models, like MLP or ResNet, the proposed Transformer-like architectures have a specific way to handle numerical features of the data. Namely, they map scalar values of numerical features to high-dimensional embedding vectors, which are then mixed by the self-attention modules. Beyond transformers, mapping numerical features to vectors was also employed in different forms in the click-through rate (CTR) prediction problems [8, 14, 40] . Nevertheless, the literature is mostly focused on developing more powerful backbones while keeping the design of embedding modules relatively simple. In particular, the existing architectures [13, 14, 24, 39, 40] construct embeddings for numerical features using quite restrictive parametric mappings, e.g., linear functions, which can lead to suboptimal performance. In this work, we demonstrate that the embedding step has a substantial impact on the model effectiveness, and its proper design can significantly improve tabular DL models. simple and interpretable representations can provide substantial benefit to deep models on several tabular problems.",
+                "cite_spans": [
+                    {
+                        "start": 25,
+                        "end": 29,
+                        "text": "[13,",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 30,
+                        "end": 33,
+                        "text": "24,",
+                        "ref_id": "BIBREF23"
+                    },
+                    {
+                        "start": 34,
+                        "end": 37,
+                        "text": "39]",
+                        "ref_id": "BIBREF38"
+                    },
+                    {
+                        "start": 120,
+                        "end": 124,
+                        "text": "[45]",
+                        "ref_id": "BIBREF44"
+                    },
+                    {
+                        "start": 599,
+                        "end": 602,
+                        "text": "[8,",
+                        "ref_id": "BIBREF7"
+                    },
+                    {
+                        "start": 603,
+                        "end": 606,
+                        "text": "14,",
+                        "ref_id": "BIBREF13"
+                    },
+                    {
+                        "start": 607,
+                        "end": 610,
+                        "text": "40]",
+                        "ref_id": "BIBREF39"
+                    },
+                    {
+                        "start": 805,
+                        "end": 809,
+                        "text": "[13,",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 810,
+                        "end": 813,
+                        "text": "14,",
+                        "ref_id": "BIBREF13"
+                    },
+                    {
+                        "start": 814,
+                        "end": 817,
+                        "text": "24,",
+                        "ref_id": "BIBREF23"
+                    },
+                    {
+                        "start": 818,
+                        "end": 821,
+                        "text": "39,",
+                        "ref_id": "BIBREF38"
+                    },
+                    {
+                        "start": 822,
+                        "end": 825,
+                        "text": "40]",
+                        "ref_id": "BIBREF39"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Introduction",
+                "sec_num": "1"
+            },
+            {
+                "text": "Recently, periodic activation functions have become a key component in processing coordinates-like inputs, which is required in many applications. Examples include NLP [45] , CV [25] , implicit neural representations [28, 38, 42] . In our work, we show that periodic activations can be used to construct powerful embedding modules for numerical features in tabular data problems. Contrary to some of the aforementioned papers, where components of the multidimensional coordinates are mixed (e.g. with linear layers) before passing them to periodic functions [38, 42] , we find it crucial to embed each feature separately before mixing them in the main backbone.",
+                "cite_spans": [
+                    {
+                        "start": 168,
+                        "end": 172,
+                        "text": "[45]",
+                        "ref_id": "BIBREF44"
+                    },
+                    {
+                        "start": 178,
+                        "end": 182,
+                        "text": "[25]",
+                        "ref_id": "BIBREF24"
+                    },
+                    {
+                        "start": 217,
+                        "end": 221,
+                        "text": "[28,",
+                        "ref_id": "BIBREF27"
+                    },
+                    {
+                        "start": 222,
+                        "end": 225,
+                        "text": "38,",
+                        "ref_id": "BIBREF37"
+                    },
+                    {
+                        "start": 226,
+                        "end": 229,
+                        "text": "42]",
+                        "ref_id": "BIBREF41"
+                    },
+                    {
+                        "start": 558,
+                        "end": 562,
+                        "text": "[38,",
+                        "ref_id": "BIBREF37"
+                    },
+                    {
+                        "start": 563,
+                        "end": 566,
+                        "text": "42]",
+                        "ref_id": "BIBREF41"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Periodic activations.",
+                "sec_num": null
+            },
+            {
+                "text": "In this section, we describe the general framework for what we call \"embeddings for numerical features\" and the main building blocks used in the experimental comparison in section 4.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Embeddings for numerical features",
+                "sec_num": "3"
+            },
+            {
+                "text": "For a given supervised learning problem on tabular data, we denote the dataset as",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Notation.",
+                "sec_num": null
+            },
+            {
+                "text": "x j , y j n j=1 where y j \u2208 Y represents the object's label and x j = x j(num) , x j(cat) \u2208 X represents the object's features (numerical and categorical). x j(num) i , in turn, denotes the i-th numerical feature of the j-th object. Depending on the context, the j index can be omitted. The dataset is split into three disjoint parts: 1, n = J train \u222a J val \u222a J test , where the \"train\" part is used for training, the \"validation\" part is used for early stopping and hyperparameter tuning, and the \"test\" part is used for the final evaluation.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Notation.",
+                "sec_num": null
+            },
+            {
+                "text": "We formalize the notion of \"embeddings for numerical features\" as z i = f i ((x (num) i ) \u2208 R di , where f i (x) is the embedding function for the i-th numerical feature, z i is the embedding of the i-th numerical feature and d i is the dimensionality of the embedding. Importantly, the proposed framework implies that embeddings for all features are computed independently of each other. Note that the function f i can depend on parameters that are trained as a part of the whole model or in some other fashion (e.g. before the main optimization). In this work, we consider only embedding schemes where the embedding functions for all features are of the same functional form. We never share parameters of embedding functions of different features.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "General framework",
+                "sec_num": "3.1"
+            },
+            {
+                "text": "The subsequent use of the embeddings depends on the model backbone. For MLP-like architectures, they are concatenated into one flat vector (see Appendix A for illustrations). For Transformer-based architectures, no extra step is performed and the embeddings are passed as is, so the usage is defined by the original architectures.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "General framework",
+                "sec_num": "3.1"
+            },
+            {
+                "text": "While vanilla MLP is known to be a universal approximator [9, 16] , in practice, due to optimization peculiarities, it has limitations in its learning capabilities [34] . However, the recent work by Tancik et al. [42] uncovers the case where changing the input space alleviates the above issue. This observation motivates us to check if changing the representations of the original scalar values of numerical features can improve the learning capabilities of tabular DL models.",
+                "cite_spans": [
+                    {
+                        "start": 58,
+                        "end": 61,
+                        "text": "[9,",
+                        "ref_id": "BIBREF8"
+                    },
+                    {
+                        "start": 62,
+                        "end": 65,
+                        "text": "16]",
+                        "ref_id": "BIBREF15"
+                    },
+                    {
+                        "start": 164,
+                        "end": 168,
+                        "text": "[34]",
+                        "ref_id": "BIBREF33"
+                    },
+                    {
+                        "start": 213,
+                        "end": 217,
+                        "text": "[42]",
+                        "ref_id": "BIBREF41"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "At this point, we try to start simple and turn to \"classical\" machine learning techniques. Namely, we take inspiration from the one-hot encoding algorithm that is widely and successfully used for representing discrete entities such as categorical features in tabular data problems or tokens in NLP. We note that the one-hot representation can be seen as an opposite solution to the scalar representation in terms of the trade-off between parameter efficiency and expressivity. To check whether the onehot-like approach can be beneficial for tabular DL models, we design a continuous alternative to the one-hot encoding (since the vanilla one-hot encoding is barely applicable to numerical features).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "Formally, for the i-th numerical feature, we split its value range into the disjoint set of T i intervals B i 1 , . . . , B i T , which we call bins:",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "B i t = [b i t-1 , b i t ).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "The splitting algorithm is an important implementation detail that we discuss later. From now on, we omit the feature index i for simplicity. Once the bins are determined, we define the encoding scheme as in Equation 1:",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "PLE(x) = [e 1 , . . . , e T ] \u2208 R T e t = \uf8f1 \uf8f4 \uf8f2 \uf8f4 \uf8f3 0,",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "x < b t-1 AND t > 1 1,",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "x \u2265 b t AND t < T",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "x-bt-1 bt-bt-1 , otherwise",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "where PLE stands for \"peicewise linear encoding\". We provide the visualization in Figure 1 . Figure 1 : The piecewise linear encoding (PLE) in action for T = 4 (see Equation 1).",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 89,
+                        "end": 90,
+                        "text": "1",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 100,
+                        "end": 101,
+                        "text": "1",
+                        "ref_id": null
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "Note that:",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "\u2022 PLE produces alternative initial representations for the numerical features and can be viewed as a preprocessing strategy. These representations are computed once and then used instead of the original scalar values during the main optimization.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "\u2022 For T = 1, the PLE-representation is effectively equivalent to the scalar representation.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "\u2022 Contrary to categorical features, numerical features are ordered; we express that by setting to 1 the components corresponding to bins with the right boundaries lower than the given feature value (this approach resembles how labels are encoded in ordinal regression problems).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "\u2022 The cases (x < b 0 ) and (x \u2265 b T ) are also covered by Equation 1 (which leads to (e 1 \u2264 0) and (e T \u2265 1) respectively).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "\u2022 The choice to make the representation piecewise linear is itself a subject for discussion. We analyze some alternatives in subsection 5.2.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "\u2022 PLE can be viewed as feature preprocessing, which is additionally discussed in subsection 5.3.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "A note on attention-based models. While the described PLE-representations can be passed to MLPlike models as is, attention-based models are inherently invariant to the order of input embeddings, so one additional step is required to add the information about feature indices to the obtained encodings. Technically, we observe that it is enough to place one linear layer after PLE(without sharing weights between features). Conceptually, however, this solution has a clear semantic interpretation. Namely, it is equivalent to allocating one trainable embedding v t \u2208 R d for each bin B t and obtaining the final feature embedding by aggregating the embeddings of its bins with e t as weights, plus bias v 0 . Formally:",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "f i (x) = v 0 + T t=1 e t \u2022 v t = Linear (PLE (x)).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "In the following two sections, we describe two simple algorithms for building bins suitable for PLE. Namely, we rely on the classic binning algorithms [11] and one of the two algorithms is unsupervised, while another one utilizes labels for constructing bins.",
+                "cite_spans": [
+                    {
+                        "start": 151,
+                        "end": 155,
+                        "text": "[11]",
+                        "ref_id": "BIBREF10"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "3.2"
+            },
+            {
+                "text": "A natural baseline way to construct the bins for PLE is by splitting value ranges according to the uniformly chosen empirical quantiles of the corresponding individual feature distributions. Formally, for the i-th feature: b t = Q t T {x j(num) i } j\u2208Jtrain , where Q is the empirical quantile function. Trivial bins of zero size are removed. In subsection D.1, we demonstrate the usefulness of the proposed scheme on the synthetic GBDT-friendly dataset described in section 5.1 in Gorishniy et al. [13] .",
+                "cite_spans": [
+                    {
+                        "start": 499,
+                        "end": 503,
+                        "text": "[13]",
+                        "ref_id": "BIBREF12"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Obtaining bins from quantiles",
+                "sec_num": "3.2.1"
+            },
+            {
+                "text": "In fact, there are also supervised approaches that employ training labels for constructing bins [11] . Intuitively, such target-aware algorithms aim to produce bins that correspond to relatively narrow ranges of possible target values. The supervised approach used in our work is identical in its spirit to the \"C4.5 Discretization\" algorithm from Kohavi and Sahami [23] . In a nutshell, for each feature, we recursively split its value range in a greedy manner using target as guidance, which is equivalent to building a decision tree (which uses for growing only this one feature and the target) and treating the regions corresponding to its leaves as the bins for PLE (see the illustration in Figure 4 ). Additionally, we define b i 0 = min j\u2208Jtrain x j i and b i T = max j\u2208Jtrain x j i .",
+                "cite_spans": [
+                    {
+                        "start": 96,
+                        "end": 100,
+                        "text": "[11]",
+                        "ref_id": "BIBREF10"
+                    },
+                    {
+                        "start": 366,
+                        "end": 370,
+                        "text": "[23]",
+                        "ref_id": "BIBREF22"
+                    }
+                ],
+                "ref_spans": [
+                    {
+                        "start": 703,
+                        "end": 704,
+                        "text": "4",
+                        "ref_id": "FIGREF1"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Building target-aware bins",
+                "sec_num": "3.2.2"
+            },
+            {
+                "text": "Recall that in subsection 3.2 the work by Tancik et al. [42] was used as a starting point of our motivation for developing PLE. Thus, we also try to adapt the original work itself for tabular data problems. Our variation differs in two aspects. First, we take into account the fact the embedding framework described in subsection 3.1 forbids mixing features during the embedding process (see subsection D.2 for additional discussion). Second, we train the pre-activation coefficients instead of keeping them fixed. As a result, our approach is rather close to Li et al. [25] with the number of \"groups\" equal to the number of numerical features. We formalize the described scheme in Equation 2,",
+                "cite_spans": [
+                    {
+                        "start": 56,
+                        "end": 60,
+                        "text": "[42]",
+                        "ref_id": "BIBREF41"
+                    },
+                    {
+                        "start": 570,
+                        "end": 574,
+                        "text": "[25]",
+                        "ref_id": "BIBREF24"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Periodic activation functions",
+                "sec_num": "3.3"
+            },
+            {
+                "text": "EQUATION",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [
+                    {
+                        "start": 0,
+                        "end": 8,
+                        "text": "EQUATION",
+                        "ref_id": "EQREF",
+                        "raw_str": "f i (x) = Periodic(x) = concat[sin(v), cos(v)], v = [2\u03c0c 1 x, . . . , 2\u03c0c k x]",
+                        "eq_num": "(2)"
+                    }
+                ],
+                "section": "Periodic activation functions",
+                "sec_num": "3.3"
+            },
+            {
+                "text": "where c i are trainable parameters initialized from N (0, \u03c3). We observe that \u03c3 is an important hyperparameter. Both \u03c3 and k are tuned using validation sets.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Periodic activation functions",
+                "sec_num": "3.3"
+            },
+            {
+                "text": "In the context of Deep Learning, embedding numerical features with conventional differentiable layers (e.g. linear layers, ReLU activation, etc.) is a natural approach. In fact, this technique is already used on its own in the recently proposed attention-based architectures [13, 24, 39] and in some models for CTR prediction problems [14, 40] . However, we also note that such conventional modules can be used on top of the components described in subsection 3.2 and subsection 3.3. In section 4, we find that such combinations often lead to better results.",
+                "cite_spans": [
+                    {
+                        "start": 275,
+                        "end": 279,
+                        "text": "[13,",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 280,
+                        "end": 283,
+                        "text": "24,",
+                        "ref_id": "BIBREF23"
+                    },
+                    {
+                        "start": 284,
+                        "end": 287,
+                        "text": "39]",
+                        "ref_id": "BIBREF38"
+                    },
+                    {
+                        "start": 335,
+                        "end": 339,
+                        "text": "[14,",
+                        "ref_id": "BIBREF13"
+                    },
+                    {
+                        "start": 340,
+                        "end": 343,
+                        "text": "40]",
+                        "ref_id": "BIBREF39"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Simple differentiable layers",
+                "sec_num": "3.4"
+            },
+            {
+                "text": "In this section, we empirically evaluate the techniques discussed in section 3 and compare them with Gradient Boosted Decision Trees to check the status quo of the \"DL vs GBDT\" competition. We use eleven public datasets mostly from the previous works on tabular DL and Kaggle competitions. Importantly, we focus on the middle and large scale tasks, and our benchmark is biased towards GBDT-friendly problems, since, as of now, closing the gap with GBDT models on such tasks is one of the main challenges for tabular DL. The main dataset properties are summarized in Table 1 and the used sources and additional details are provided in Appendix C.",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 572,
+                        "end": 573,
+                        "text": "1",
+                        "ref_id": "TABREF0"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Experiments",
+                "sec_num": "4"
+            },
+            {
+                "text": "We mostly follow Gorishniy et al. [13] in terms of the hyperparameter tuning, training and evaluation protocols. Nevertheless, for completeness, we list all the details in Appendix E. In the next paragraph, we describe the implementation details specific to embeddings for numerical features.",
+                "cite_spans": [
+                    {
+                        "start": 34,
+                        "end": 38,
+                        "text": "[13]",
+                        "ref_id": "BIBREF12"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Implementation details",
+                "sec_num": "4.2"
+            },
+            {
+                "text": "Embeddings for numerical features. If linear layers are used, we tune their output dimensions. The PLE hyperparameters are the same for all features. For quantile-based PLE, we tune the number of quantiles. For target-aware PLE, we tune the following parameters for decision trees: the maximum number of leaves, the minimum number of items per leaf, and the minimum information gain required for making a split when growing the tree. For the Periodic module (see Equation 2), we tune \u03c3 and k (these hyperparameters are the same for all features).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Implementation details",
+                "sec_num": "4.2"
+            },
+            {
+                "text": "In the experiments, we consider different combinations of backbones and embeddings. For convenience, we use the \"Backbone-Embedding\" pattern to name the models, where \"Backbone\" denotes the backbone (e.g. MLP, ResNet, Transformer) and \"Embedding\" denotes the embedding type. See Table 2 for all considered embedding modules. Note that:",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 285,
+                        "end": 286,
+                        "text": "2",
+                        "ref_id": "TABREF1"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Model names",
+                "sec_num": "4.3"
+            },
+            {
+                "text": "\u2022 Periodic is defined in Equation 2.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Model names",
+                "sec_num": "4.3"
+            },
+            {
+                "text": "\u2022 PLE q denotes the quantile-based PLE. PLE t denotes the target-aware PLE.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Model names",
+                "sec_num": "4.3"
+            },
+            {
+                "text": "\u2022 Linear -denotes bias-free linear layer.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Model names",
+                "sec_num": "4.3"
+            },
+            {
+                "text": "LReLU denotes leaky ReLU. AutoDis was proposed in Guo et al. [14] \u2022 \"Transformer-L\" is equivalent to FT-Transformer [13] . ",
+                "cite_spans": [
+                    {
+                        "start": 61,
+                        "end": 65,
+                        "text": "[14]",
+                        "ref_id": "BIBREF13"
+                    },
+                    {
+                        "start": 116,
+                        "end": 120,
+                        "text": "[13]",
+                        "ref_id": "BIBREF12"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Model names",
+                "sec_num": "4.3"
+            },
+            {
+                "text": "L Linear LR ReLU \u2022 Linear LRLR ReLU \u2022 Linear \u2022 ReLU \u2022 Linear Q PLEq Q-L Linear \u2022 PLEq Q-LR ReLU \u2022 Linear \u2022 PLEq Q-LRLR ReLU \u2022 Linear \u2022 ReLU \u2022 Linear \u2022 PLEq T PLEt T-L Linear \u2022 PLEt T-LR ReLU \u2022 Linear \u2022 PLEt T-LRLR ReLU \u2022 Linear \u2022 ReLU \u2022 Linear \u2022 PLEt P Periodic PL Linear \u2022 Periodic PLR ReLU \u2022 Linear \u2022 Periodic PLRLR ReLU \u2022 Linear \u2022 ReLU \u2022 Linear \u2022 Periodic AutoDis Linear \u2022 SoftMax \u2022 Linear-\u2022 LReLU \u2022 Linear-",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Model names",
+                "sec_num": "4.3"
+            },
+            {
+                "text": "Table 3 : Results for MLP equipped with simple embedding modules (see subsection 4.3). The metric values averaged over 15 random seeds are reported. The standard deviations are provided in Appendix F. We consider one result to be better than another if its mean score is better and its standard deviation is less than the difference. For each dataset, top results are in bold. Notation: \u2193 corresponds to RMSE, \u2191 corresponds to accuracy We start by evaluating embedding modules consisting of \"conventional\" differentiable layers (linear layers, ReLU activations, etc.). The results are summarized in Table 3 . The main takeaways:",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 6,
+                        "end": 7,
+                        "text": "3",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 605,
+                        "end": 606,
+                        "text": "3",
+                        "ref_id": null
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Simple differentiable embedding modules",
+                "sec_num": "4.4"
+            },
+            {
+                "text": "GE \u2191 CH \u2191 CA \u2193 HO \u2193 AD \u2191 OT \u2191 HI \u2191 FB \u2193 SA \u2191 CO \u2191 MI \u2193",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Simple differentiable embedding modules",
+                "sec_num": "4.4"
+            },
+            {
+                "text": "\u2022 first and foremost, the results indicate that MLP can benefit from embedding modules. Thus, we conclude that this backbone is worth attention when it comes to evaluating embedding modules.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Simple differentiable embedding modules",
+                "sec_num": "4.4"
+            },
+            {
+                "text": "\u2022 the simple LR module leads to modest, but consistent improvements when applied to MLP. Interestingly, the \"redundant\" MLP-L configuration also tends to outperform the vanilla MLP. Although the improvements are not dramatic, the special property of this architecture is that the linear embedding module can be fused together with the first linear layer of MLP after training, which completely removes the overhead. As for LRLR and AutoDis, we observe that these heavy modules do not justify the extra costs (see the results in Appendix F).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Simple differentiable embedding modules",
+                "sec_num": "4.4"
+            },
+            {
+                "text": "In this section, we evaluate the encoding scheme described in subsection 3.2. The results are summarized in Table 4 .",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 114,
+                        "end": 115,
+                        "text": "4",
+                        "ref_id": "TABREF2"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "4.5"
+            },
+            {
+                "text": "The main takeaways:",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "4.5"
+            },
+            {
+                "text": "\u2022 The piecewise linear encoding is often beneficial for both types of architectures (MLP and Transformer) and the profit can be significant (for example, see the CA and AD datasets).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "4.5"
+            },
+            {
+                "text": "\u2022 Adding differentiable components on top of the PLE can improve the performance. Though, the most expensive modifications such as Q-LRLR and T-LRLR are not worth it (see Appendix F).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "4.5"
+            },
+            {
+                "text": "Note that the benchmark is biased towards GBDT-friendly problems, so the typical superiority of tree-based bins over quantile-based bins, which can be observed in Table 4 , may not generalize to more DL-friendly datasets. Thus, we do not make any general claims about the relative advantages of the two schemes here. In this section, we evaluate embedding modules based on periodic activation functions as described in subsection 3.3. The results are reported in Table 5 . The main takeaway: on average, MLP-P is superior to the vanilla MLP. However, adding a differentiable component on top of the Periodic module should be the default strategy (which is in line with Li et al. [25] ). Indeed, MLP-PLR and MLP-PL provide meaningful improvements over MLP-P (e.g. see GE, CA, HO) and even \"fix\" MLP-P where it is inferior to MLP (OT, FB).",
+                "cite_spans": [
+                    {
+                        "start": 679,
+                        "end": 683,
+                        "text": "[25]",
+                        "ref_id": "BIBREF24"
+                    }
+                ],
+                "ref_spans": [
+                    {
+                        "start": 169,
+                        "end": 170,
+                        "text": "4",
+                        "ref_id": "TABREF2"
+                    },
+                    {
+                        "start": 469,
+                        "end": 470,
+                        "text": "5",
+                        "ref_id": "TABREF3"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "4.5"
+            },
+            {
+                "text": "Although MLP-PLR is usually superior to MLP-PL, we note that in the latter case the last linear layer of the embedding module is \"redundant\" in terms of expressivity and can be fused with the first linear layer of the backbone after training, which, in theory, can lead to a more lightweight model. Finally, we observe that MLP-PLRLR and MLP-PLR do not differ significantly enough to justify the extra cost of the PLRLR module (see Appendix F).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding",
+                "sec_num": "4.5"
+            },
+            {
+                "text": "In this section, we perform a big comparison of different approaches to identify the best embedding modules and backbones, as well as to check if embeddings for numerical features allow DL models to compete with GBDT on more tasks than before. Importantly, we compare ensembles of DL models against ensembles of GBDT, since Gradient Boosting is essentially an ensembling technique, so such comparison will be fairer. Note that we focus only on the best metric values without taking efficiency into account, so we only check if DL models are conceptually ready to compete with GBDT.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "We consider three backbones: MLP, ResNet, and Transformer, since they are reported to be representative of what baseline DL backbones are currently capable of [13, 18, 24, 39] . Note that we do not include the attention-based models that also apply attention on the level of objects [24, 35, 39] , since this non-parametric component is orthogonal to the central topic of our work. The results are summarized in Table 6 .",
+                "cite_spans": [
+                    {
+                        "start": 159,
+                        "end": 163,
+                        "text": "[13,",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 164,
+                        "end": 167,
+                        "text": "18,",
+                        "ref_id": "BIBREF17"
+                    },
+                    {
+                        "start": 168,
+                        "end": 171,
+                        "text": "24,",
+                        "ref_id": "BIBREF23"
+                    },
+                    {
+                        "start": 172,
+                        "end": 175,
+                        "text": "39]",
+                        "ref_id": "BIBREF38"
+                    },
+                    {
+                        "start": 283,
+                        "end": 287,
+                        "text": "[24,",
+                        "ref_id": "BIBREF23"
+                    },
+                    {
+                        "start": 288,
+                        "end": 291,
+                        "text": "35,",
+                        "ref_id": "BIBREF34"
+                    },
+                    {
+                        "start": 292,
+                        "end": 295,
+                        "text": "39]",
+                        "ref_id": "BIBREF38"
+                    }
+                ],
+                "ref_spans": [
+                    {
+                        "start": 418,
+                        "end": 419,
+                        "text": "6",
+                        "ref_id": null
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "Table 6: Results for ensembles of GBDT, the baseline DL models and their modifications using different types of embeddings for numerical features. Notation follows Table 3 and Table 2. Due to the limited precision, some different values are represented with the same figures. GE \u2191 CH \u2191 CA \u2193 HO \u2193 AD \u2191 OT \u2191 HI \u2191 FB \u2193 SA \u2191 CO \u2191 MI \u2193 Avg. Rank CatBoost 0.692 0.861 0.430 3.093 0.873 0.825 0.727 5.226 0.924 0.967 0.741 3.6 \u00b1 2.9 XGBoost 0.683 0.859 0.434 3.152 0.875 0.827 0.726 5.338 0.919 0.969 0.742 4.6 \u00b1 2.7 MLP 0.665 0.856 0.486 3.109 0.856 0.822 0.727 5.616 0.913 0.968 0.746 8.5 \u00b1 2.6 MLP-LR 0.679 0.861 0.463 3.012 0.859 0.826 0.731 5.477 0.924 0.972 0.744 5.5 \u00b1 2.7 MLP-Q-LR 0.682 0.859 0.433 3.080 0.867 0.818 0.724 5.144 0.924 0.974 0.745 5.1 \u00b1 1.9 MLP-T-LR 0.673 0.861 0.435 3.099 0.870 0.821 0.727 5.409 0.924 0.973 0.746 5.1 \u00b1 1.7 MLP-PLR 0.700 0.858 0.453 2.975 0.874 0.830 0.734 5.388 0.924 0.975 0.743 3.0 \u00b1 2.4 ResNet 0.690 0.861 0.483 3.081 0.856 0.821 0.734 5.482 0.918 0.968 0.745 6.7 \u00b1 3.3 ResNet-LR 0.672 0.862 0.450 2.992 0.859 0.822 0.733 5.415 0.923 0.971 0.743 5.6 \u00b1 2.7 ResNet-Q-LR 0.674 0.859 0.427 3.066 0.868 0.815 0.729 5.309 0.923 0.976 0.746 4.7 \u00b1 2.0 ResNet-T-LR 0.683 0.862 0.425 3.030 0.872 0.822 0.731 5.471 0.923 0.975 0.744 4.1 \u00b1 1.9 ResNet-PLR 0.691 0.861 0.443 3.040 0.874 0.825 0.734 5.400 0.924 0.975 0.743 3.2 \u00b1 1.3 Transformer-L 0.668 0.861 0.455 3.188 0.860 0.824 0.727 5.434 0.924 0.973 0.743 5.9 \u00b1 2.2 Transformer-LR 0.666 0.861 0.446 3.193 0.861 0.824 0.733 5.430 0.924 0.973 0.743 5.2 \u00b1 2.2 Transformer-Q-LR 0.690 0.857 0.425 3.143 0.868 0.818 0.726 5.471 0.924 0.975 0.744 4.4 \u00b1 2.2 Transformer-T-LR 0.686 0.862 0.423 3.149 0.871 0.823 0.733 5.515 0.924 0.976 0.744 3.7 \u00b1 2.2 Transformer-PLR 0.686 0.864 0.449 3.091 0.873 0.823 0.734 5.581 0.924 0.975 0.743 3.9 \u00b1 2.5",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 170,
+                        "end": 171,
+                        "text": "3",
+                        "ref_id": null
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "The main takeaways for DL models:",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 For most datasets, embeddings for numerical features can provide noticeable improvements for three different backbones. Although the average rank is not a good metric for making subtle conclusions, we highlight the impressive difference in average ranks between the MLP and MLP-PLR models.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 The simplest LR embedding is a good baseline solution: although the performance gains are not dramatic, its main advantage is consistency (e.g. see MLP vs MLP-LR).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 The PLR module provides the best average performance. Empirically, we observe \u03c3 (see Equation 2) to be an important hyperparameter that should be tuned.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 Piecewise linear encoding (PLE) allows building well performing embeddings (e.g. T-LR, Q-LR).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "In addition to that, PLE itself is worth attention because of its simplicity, interpretability and efficiency (no computationally expensive periodic functions).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 Importantly, after the MLP-like architectures are coupled with embeddings for numerical features, they perform on par with the Transformer-based models.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "The main takeaway for the \"DL vs GBDT\" competition: embeddings for numerical features is a significant design aspect that has a great potential for improving DL models and closing the gap with GBDT on GBDT-friendly tasks. Let us illustrate this claim with several observations:",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 The benchmark is initially biased to GBDT-friendly problems, which can be observed by comparing GBDT solutions with the vanilla DL models (MLP, ResNet, Transformer-L).",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 However, for the vast majority of the \"backbone & dataset\" pairs, proper embeddings are the only thing needed to close the gap with GBDT. Exceptions (rather formal) include the MI dataset and the following pairs: \"ResNet & GE\", \"Transformer & FB\", \"Transformer & GE\", \"Transformer & OT\".",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "\u2022 Additionally, to the best of our knowledge, it is the first time when DL models perform on par with GBDT on the well-known California Housing and Adult datasets.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "That said, compared to GBDT models, efficiency can still be an issue for the considered DL architectures. In any case, the trade-off completely depends on the specific use case and requirements.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Comparing DL models and GBDT",
+                "sec_num": "4.7"
+            },
+            {
+                "text": "To quantify the effect of embeddings for numerical features on model sizes, we report the parameter counts in Table 7 . Overall, introducing embeddings for numerical features can cause non-negligible overhead in terms of model size. Importantly, the overhead in terms of size does not translate to the same overhead in terms of training times and throughput. For example, the almost 2000-fold increase in the parameter count for MLP-LR on the CH dataset results in only 1.5-fold increase in training times. Finally, in practice, we observe that coupling MLP and ResNet with embedding modules leads to architectures that are still faster than Transformer-based models. In this section, we compare two alternative binning-based encoding schemes with PLE (see subsection 3.2). The first one (\"thermometer\" [6] ) sets the value 1 instead of the piecewise linear term (see Equation 1). The second one is a generalized version of the one-blob encoding [29] (see subsection E.1 for details). The tuning and evaluation protocols are the same as in subsection 4.2. The results in table Table 8 indicate that making the binning-based encoding piecewise linear is a good default strategy.",
+                "cite_spans": [
+                    {
+                        "start": 803,
+                        "end": 806,
+                        "text": "[6]",
+                        "ref_id": "BIBREF5"
+                    },
+                    {
+                        "start": 946,
+                        "end": 950,
+                        "text": "[29]",
+                        "ref_id": "BIBREF28"
+                    }
+                ],
+                "ref_spans": [
+                    {
+                        "start": 116,
+                        "end": 117,
+                        "text": "7",
+                        "ref_id": "TABREF4"
+                    },
+                    {
+                        "start": 1077,
+                        "end": 1082,
+                        "text": "Table",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 1083,
+                        "end": 1084,
+                        "text": "8",
+                        "ref_id": "TABREF5"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Comparing model sizes",
+                "sec_num": "5.1"
+            },
+            {
+                "text": "It is known that data preprocessing, such as standardization or quantile transformation, is often crucial for DL models for achieving competitive performance. Moreover, the performance can significantly vary between different types of preprocessing. At the same time, PLE-representations contain only values from [0, 1] and they are invariant to shifting and scaling, which makes PLE itself a general feature preprocessing technique potentially suitable for DL models without the need to use traditional preprocessing first.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding as a feature preprocessing technique",
+                "sec_num": "5.3"
+            },
+            {
+                "text": "To illustrate that, for datasets where the quantile transformation was used in section 4, we reevaluate the tuned configurations of MLP, MLP-Q, and MLP-T with different preprocessing policies and report the results in Table 9 (note that standardization is equivalent to no preprocessing for models with PLE). First, the vanilla MLP often becomes unusable without preprocessing. Second, for the vanilla MLP, it can be important to choose one specific type of preprocessing (CA, HO, FB, MI), which is less pronounced for MLP-Q and not the case for MLP-T (though, this specific observation can be the property of the benchmarks, not of MLP-T). Overall, the results indicate that models using PLE are less sensitive to the initial preprocessing compared to the vanilla MLP. This is an additional benefit of PLE-representations for practitioners since the aspect of preprocessing becomes less critical with PLE.",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 224,
+                        "end": 225,
+                        "text": "9",
+                        "ref_id": "TABREF6"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Piecewise linear encoding as a feature preprocessing technique",
+                "sec_num": "5.3"
+            },
+            {
+                "text": "The \"feature engineering\" perspective At first sight, feature embeddings may resemble feature engineering and should be suitable for all kinds of models. However, the proposed embedding schemes are motivated by DL-specific aspects of training (see the motivational parts of subsection 3.2 and subsection 3.3). While our methods are likely to transfer well to models with similar training properties (e.g. to linear models since those are a special case of deep models), it is not the case in general. To illustrate that, we try adopting the Periodic module for XGBoost by fixing the random coefficients from Equation 2. We also keep the original features instead of dropping them. The tuning and evaluation protocols are the same as in subsection 4.2. The results in Table 10 show that this technique, while being useful for DL models, does not provide any benefits for XGBoost.",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 773,
+                        "end": 775,
+                        "text": "10",
+                        "ref_id": "TABREF7"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "5.4",
+                "sec_num": null
+            },
+            {
+                "text": "In this work, we have demonstrated that embeddings for numerical features are an important design aspect of tabular DL architectures. Namely, it allows existing DL backbones to achieve noticeably better results and significantly reduce the gap with Gradient Boosted Decision Trees. We have described two approaches illustrating this phenomenon, one using the piecewise linear encoding of original scalar values, and another using periodic functions. We have also shown that traditional MLP-like models coupled with embeddings can perform on par with attention-based models.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Conclusion & Future work",
+                "sec_num": "6"
+            },
+            {
+                "text": "Nevertheless, we have only scratched the surface of the new direction. For example, it is still to be explained how exactly the discussed embedding modules help optimization on the fundamental level. Additionally, we have considered only schemes where the same functional transformation was applied to all features, which may be a suboptimal choice.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Conclusion & Future work",
+                "sec_num": "6"
+            },
+            {
+                "text": "Checklist 1. For all authors... (a) Do the main claims made in the abstract and introduction accurately reflect the paper's contributions and scope? [Yes] (b) Did you describe the limitations of your work? [Yes] See the analysis in subsection 5.1. (c) Did you discuss any potential negative societal impacts of your work? [N/A] The work focuses on a generic aspect of deep learning models. (d) Have you read the ethics review guidelines and ensured that your paper conforms to them? [Yes] 2. If you are including theoretical results... (a) Did you state the full set of assumptions of all theoretical results? [N/A] We do not include theoretical results. (b) Did you include complete proofs of all theoretical results? [N/A] We do not include theoretical results. 3. If you ran experiments... (a) Did you include the code, data, and instructions needed to reproduce the main experimental results (either in the supplemental material or as a URL)? [Yes] See the supplementary material. (b) Did you specify all the training details (e.g., data splits, hyperparameters, how they were chosen)? [Yes] The supplementary material includes the script used to create data splits. The hyperparameters are either explicitly described in subsection 4.2 and supplementary material, or tuned as described in subsection 4.2. (c) Did you report error bars (e.g., with respect to the random seed after running experiments multiple times)? [Yes] We provide standard deviations in the supplementary material, see Table 18 and see Table 19 (d) Did you include the total amount of compute and the type of resources used (e.g., type of GPUs, internal cluster, or cloud provider)? [Yes] The experiment reports included in the supplementary material provide the information about the used hardware and execution times. 4. If you are using existing assets (e.g., code, data, models) or curating/releasing new assets... (a) If your work uses existing assets, did you cite the creators? [Yes] See Appendix C. (b) Did you mention the license of the assets? [Yes] In the README.md file in the supplementary material, we refer to the original licenses of the used datasets. (c) Did you include any new assets either in the supplemental material or as a URL? [N/A] We do not provide new datasets. (d) Did you discuss whether and how consent was obtained from people whose data you're using/curating? [N/A] We use publicly available datasets. (e) Did you discuss whether the data you are using/curating contains personally identifiable information or offensive content? [N/A] We use publicly available datasets. 5. If you used crowdsourcing or conducted research with human subjects... (a) Did you include the full text of instructions given to participants and screenshots, if applicable? [N/A] We did not use crowdsourcing. We did not conduct research with human subjects. (b) Did you describe any potential participant risks, with links to Institutional Review Board (IRB) approvals, if applicable? [N/A] We did not use crowdsourcing. We did not conduct research with human subjects. (c) Did you include the estimated hourly wage paid to participants and the total amount spent on participant compensation? [N/A] We did not use crowdsourcing. We did not conduct research with human subjects.",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Conclusion & Future work",
+                "sec_num": "6"
+            },
+            {
+                "text": "A MLP with embeddings for numerical features",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Supplementary material",
+                "sec_num": null
+            },
+            {
+                "text": "We provide visual explanation of how embeddings are passed to MLP in Figure 2 and Figure 3 . Also, we provide the formal explanation in Equation 3 (categorical features are omitted for simplicity).",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 76,
+                        "end": 77,
+                        "text": "2",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 89,
+                        "end": 90,
+                        "text": "3",
+                        "ref_id": null
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Supplementary material",
+                "sec_num": null
+            },
+            {
+                "text": "Figure 2 : The vanilla MLP. The model takes two numerical features as input.",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 7,
+                        "end": 8,
+                        "text": "2",
+                        "ref_id": null
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Supplementary material",
+                "sec_num": null
+            },
+            {
+                "text": "Figure 3 : The same MLP as in Figure 2 , but now with embeddings for numerical features.",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 7,
+                        "end": 8,
+                        "text": "3",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 37,
+                        "end": 38,
+                        "text": "2",
+                        "ref_id": null
+                    }
+                ],
+                "eq_spans": [],
+                "section": "Supplementary material",
+                "sec_num": null
+            },
+            {
+                "text": "MLP(z 1 , . . . , z k ) = MLP (concat[z 1 , . . . , z k ]) concat[z 1 , . . . , z k ] \u2208 R d1+... +d k (3)",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Supplementary material",
+                "sec_num": null
+            },
+            {
+                "text": "We provide visualisation of target-aware PLE (subsubsection 3.2.2) in Figure 4 . We used the following datasets:",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 77,
+                        "end": 78,
+                        "text": "4",
+                        "ref_id": "FIGREF1"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "B Target-aware piecewise linear encoding",
+                "sec_num": null
+            },
+            {
+                "text": "\u2022 Gesture Phase Prediction (Madeo et al. [27] )",
+                "cite_spans": [
+                    {
+                        "start": 41,
+                        "end": 45,
+                        "text": "[27]",
+                        "ref_id": "BIBREF26"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "C Additional details on datasets",
+                "sec_num": null
+            },
+            {
+                "text": "\u2022 Churn Modelingfoot_0 \u2022 California Housing (real estate data, Kelley Pace and Barry [20] )",
+                "cite_spans": [
+                    {
+                        "start": 85,
+                        "end": 89,
+                        "text": "[20]",
+                        "ref_id": "BIBREF19"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "C Additional details on datasets",
+                "sec_num": null
+            },
+            {
+                "text": "\u2022 House 16Hfoot_1 \u2022 Adult (income estimation, Kohavi [22] )",
+                "cite_spans": [
+                    {
+                        "start": 53,
+                        "end": 57,
+                        "text": "[22]",
+                        "ref_id": "BIBREF21"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "C Additional details on datasets",
+                "sec_num": null
+            },
+            {
+                "text": "\u2022 Otto Group Product Classification 4\u2022 Higgs (simulated physical particles, Baldi et al. [4] ; we use the version with 98K samples available in the OpenML repository [44] ) \u2022 Santander Customer Transaction Prediction 5\u2022 Facebook Comments (Singh et al. [37] ) \u2022 Covertype (forest characteristics, Blackard and Dean. [5] )",
+                "cite_spans": [
+                    {
+                        "start": 89,
+                        "end": 92,
+                        "text": "[4]",
+                        "ref_id": "BIBREF3"
+                    },
+                    {
+                        "start": 166,
+                        "end": 170,
+                        "text": "[44]",
+                        "ref_id": "BIBREF43"
+                    },
+                    {
+                        "start": 252,
+                        "end": 256,
+                        "text": "[37]",
+                        "ref_id": "BIBREF36"
+                    },
+                    {
+                        "start": 315,
+                        "end": 318,
+                        "text": "[5]",
+                        "ref_id": "BIBREF4"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "C Additional details on datasets",
+                "sec_num": null
+            },
+            {
+                "text": "\u2022 Microsoft (search queries, Qin and Liu [33] ). We follow the pointwise approach to learning-torank and treat this ranking problem as a regression problem.",
+                "cite_spans": [
+                    {
+                        "start": 41,
+                        "end": 45,
+                        "text": "[33]",
+                        "ref_id": "BIBREF32"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "C Additional details on datasets",
+                "sec_num": null
+            },
+            {
+                "text": "In this section, we apply the quantile-based piecewise linear encoding (described in subsubsection 3.2.1 to MLP and Transformer on the synthetic GBDT-friendly dataset described in section 5.1 in Gorishniy et al. [13] . In a nutshell, features of this dataset are sampled randomly from N (0, 1), and the target is produced by an ensemble of randomly constructed decision trees applied to the sampled features. This task turns out to be easy for GBDT, but hard for traditional DL models [13] .",
+                "cite_spans": [
+                    {
+                        "start": 212,
+                        "end": 216,
+                        "text": "[13]",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 485,
+                        "end": 489,
+                        "text": "[13]",
+                        "ref_id": "BIBREF12"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "D.1 Testing quantile-based PLE on the synthetic GBDT-friendly dataset",
+                "sec_num": null
+            },
+            {
+                "text": "The results are visualized in Figure 5 . As the plot shows, PLE-representations can be helpful for both MLP and Transformer backbones. In the considered synthetic setup, increasing the number of bins leads to better results, however, in practice, using too many bins can lead to overfitting; therefore, we recommend tuning the number of bins based on a validation set.",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 37,
+                        "end": 38,
+                        "text": "5",
+                        "ref_id": "FIGREF2"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "D.1 Testing quantile-based PLE on the synthetic GBDT-friendly dataset",
+                "sec_num": null
+            },
+            {
+                "text": "Technical details. Our dataset has 10, 000 objects, 8 features and the target was produced by 16 decision trees of depth 6. CatBoost is trained with the default hyperparameters. Transformer is trained with the default hyperparameters of FT-Transformer. The MLP backbone has four layers of size 256 each. Importantly, the task GBDT-friendly, which can be illustrated by the performance of the tuned MLP: 0.2229 \u00b1 0.0055 (it is still worse than the performance of CatBoost). The remaining details can be found in the source code. ",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "D.1 Testing quantile-based PLE on the synthetic GBDT-friendly dataset",
+                "sec_num": null
+            },
+            {
+                "text": "In this section, we test Fourier features implemented exactly as in Tancik et al. [42] , i.e. pre-activation coefficients are not trained and features are mixed right from the start. Importantly, the latter means that this approach is not covered by the embedding framework described in subsection 3.1. As reported in Table 12 , MLP equipped with the original Fourier features does not perform well even compared to the vanilla MLP. So, it seems to be important to embed each feature separately as described in subsection 3.1.",
+                "cite_spans": [
+                    {
+                        "start": 82,
+                        "end": 86,
+                        "text": "[42]",
+                        "ref_id": "BIBREF41"
+                    }
+                ],
+                "ref_spans": [
+                    {
+                        "start": 324,
+                        "end": 326,
+                        "text": "12",
+                        "ref_id": "TABREF1"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "D.2 Fourier features",
+                "sec_num": null
+            },
+            {
+                "text": "Table 12 : Results for the vanilla MLP and MLP equipped with Fourier features [42] . Notation follows Table 3 and Table 2 .",
+                "cite_spans": [
+                    {
+                        "start": 78,
+                        "end": 82,
+                        "text": "[42]",
+                        "ref_id": "BIBREF41"
+                    }
+                ],
+                "ref_spans": [
+                    {
+                        "start": 6,
+                        "end": 8,
+                        "text": "12",
+                        "ref_id": "TABREF1"
+                    },
+                    {
+                        "start": 108,
+                        "end": 109,
+                        "text": "3",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 120,
+                        "end": 121,
+                        "text": "2",
+                        "ref_id": "TABREF1"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "D.2 Fourier features",
+                "sec_num": null
+            },
+            {
+                "text": "EQUATION",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [
+                    {
+                        "start": 0,
+                        "end": 8,
+                        "text": "EQUATION",
+                        "ref_id": "EQREF",
+                        "raw_str": "GE \u2191 CH \u2191 CA \u2193 HO \u2193 AD \u2191 OT \u2191 HI \u2191 FB \u2193 SA \u2191 CO \u2191 MI \u2193 MLP",
+                        "eq_num": "0"
+                    }
+                ],
+                "section": "D.2 Fourier features",
+                "sec_num": null
+            },
+            {
+                "text": ".632 0.856 0.495 3.204 0.854 0.818 0.720 5.686 0.912 0.964 0.747 MLP (Fourier features) 0.612 0.845 0.495 3.267 0.858 0.810 0.711 5.767 0.915 0.961 0.749",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "D.2 Fourier features",
+                "sec_num": null
+            },
+            {
+                "text": "We mostly follow Gorishniy et al. [13] in terms of the tuning, training and evaluation protocols.",
+                "cite_spans": [
+                    {
+                        "start": 34,
+                        "end": 38,
+                        "text": "[13]",
+                        "ref_id": "BIBREF12"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "E Implementation details",
+                "sec_num": null
+            },
+            {
+                "text": "Preliminary data preprocessing is known to be crucial for the optimization of tabular DL models. For each dataset, the same preprocessing was used for all deep models for a fair comparison. For all datasets except for Otto Group Product Classification, we use the quantile transformation from the Scikit-learn library [30] . For Otto Group Product Classification, we do not apply any feature preprocessing. We also apply standardization to regression targets for all algorithms.",
+                "cite_spans": [
+                    {
+                        "start": 318,
+                        "end": 322,
+                        "text": "[30]",
+                        "ref_id": "BIBREF29"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Data preprocessing.",
+                "sec_num": null
+            },
+            {
+                "text": "Tuning. For every dataset, we carefully tune each model's hyperparameters. The best hyperparameters are the ones that perform best on the validation set, so the test set is never used for tuning. For most algorithms, we use the Optuna library [1] to run Bayesian optimization (the Tree-Structured Parzen Estimator algorithm), which is reported to be superior to random search [43] . The search spaces for all hyperparameters are reported in the appendix.",
+                "cite_spans": [
+                    {
+                        "start": 243,
+                        "end": 246,
+                        "text": "[1]",
+                        "ref_id": "BIBREF0"
+                    },
+                    {
+                        "start": 376,
+                        "end": 380,
+                        "text": "[43]",
+                        "ref_id": "BIBREF42"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Data preprocessing.",
+                "sec_num": null
+            },
+            {
+                "text": "For each tuned configuration, we run 15 experiments with different random seeds and report the average performance on the test set. The distribution for the output dimensions of linear layers is UniformInt [1, 128] .",
+                "cite_spans": [
+                    {
+                        "start": 206,
+                        "end": 209,
+                        "text": "[1,",
+                        "ref_id": "BIBREF0"
+                    },
+                    {
+                        "start": 210,
+                        "end": 214,
+                        "text": "128]",
+                        "ref_id": null
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "Evaluation.",
+                "sec_num": null
+            },
+            {
+                "text": "We share the same hyperparameter space for PLE across all datasets and models. For the quantile-based PLE, the distribution for the number of quantiles is UniformInt [2, 256] . For the target-aware (tree-based) PLE, the distribution for the number of leaves is UniformInt [2, 256] , the distribution for the minimum number of items per leaf is UniformInt [1, 128] and the distribution for the minimum information gain required for making a split is LogUniform[1e-9, 0.01].",
+                "cite_spans": [
+                    {
+                        "start": 166,
+                        "end": 169,
+                        "text": "[2,",
+                        "ref_id": "BIBREF1"
+                    },
+                    {
+                        "start": 170,
+                        "end": 174,
+                        "text": "256]",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 272,
+                        "end": 275,
+                        "text": "[2,",
+                        "ref_id": "BIBREF1"
+                    },
+                    {
+                        "start": 276,
+                        "end": 280,
+                        "text": "256]",
+                        "ref_id": null
+                    },
+                    {
+                        "start": 355,
+                        "end": 358,
+                        "text": "[1,",
+                        "ref_id": "BIBREF0"
+                    },
+                    {
+                        "start": 359,
+                        "end": 363,
+                        "text": "128]",
+                        "ref_id": null
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "PLE.",
+                "sec_num": null
+            },
+            {
+                "text": "Periodic. The distribution for k (see Equation 2) is UniformInt [1, 128] .",
+                "cite_spans": [
+                    {
+                        "start": 64,
+                        "end": 67,
+                        "text": "[1,",
+                        "ref_id": "BIBREF0"
+                    },
+                    {
+                        "start": 68,
+                        "end": 72,
+                        "text": "128]",
+                        "ref_id": null
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "PLE.",
+                "sec_num": null
+            },
+            {
+                "text": "The scores with standard deviations for single models and ensembles are provided in Table 18 and Table 19 respectively. Please, refer to Table 2 to learn about the model names.",
+                "cite_spans": [],
+                "ref_spans": [
+                    {
+                        "start": 90,
+                        "end": 92,
+                        "text": "18",
+                        "ref_id": "TABREF5"
+                    },
+                    {
+                        "start": 103,
+                        "end": 105,
+                        "text": "19",
+                        "ref_id": "TABREF6"
+                    },
+                    {
+                        "start": 143,
+                        "end": 144,
+                        "text": "2",
+                        "ref_id": "TABREF1"
+                    }
+                ],
+                "eq_spans": [],
+                "section": "F Extended tables with experimental results",
+                "sec_num": null
+            },
+            {
+                "text": "Additionally, we include the results for the DICE embeddings [41] , which is a general way to represent numbers with vectors introduced in the context of NLP. The results though demonstrate that it is a suboptimal approach in tabular data problems.",
+                "cite_spans": [
+                    {
+                        "start": 61,
+                        "end": 65,
+                        "text": "[41]",
+                        "ref_id": "BIBREF40"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "F Extended tables with experimental results",
+                "sec_num": null
+            },
+            {
+                "text": "Table 18: Extended results for single models ",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "F Extended tables with experimental results",
+                "sec_num": null
+            },
+            {
+                "text": "https://www.kaggle.com/shrutimechlearn/churn-modelling",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "",
+                "sec_num": null
+            },
+            {
+                "text": "https://www.openml.org/d/574",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "",
+                "sec_num": null
+            },
+            {
+                "text": "https://www.kaggle.com/c/otto-group-product-classification-challenge/data",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "",
+                "sec_num": null
+            },
+            {
+                "text": "https://www.kaggle.com/c/santander-customer-transaction-prediction",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "",
+                "sec_num": null
+            }
+        ],
+        "back_matter": [
+            {
+                "text": "Ensembles. For each model-dataset pair, we obtain three ensembles by splitting the 15 single models into three disjoint groups of equal size and averaging predictions of single models within each group.Neural networks. The implementations of the MLP, ResNet, and Transformer backbones are taken from Gorishniy et al. [13] . We minimize cross-entropy for classification problems and mean squared error for regression problems. We use the AdamW optimizer [26] . We do not apply learning rate schedules. For each dataset, we use a predefined batch size (see Appendix C for the specific values). We continue training until there are patience + 1 consecutive epochs without improvements on the validation set; we set patience = 16 for all models.Categorical features. For CatBoost, we employ the built-in support for categorical features. For all other algorithms, we use the one-hot encoding.",
+                "cite_spans": [
+                    {
+                        "start": 317,
+                        "end": 321,
+                        "text": "[13]",
+                        "ref_id": "BIBREF12"
+                    },
+                    {
+                        "start": 453,
+                        "end": 457,
+                        "text": "[26]",
+                        "ref_id": "BIBREF25"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "annex",
+                "sec_num": null
+            },
+            {
+                "text": "In subsection 5.2, we used a slightly generalized version of the original one-blob encoding [29] . Namely, while the original sets the width of the kernel to T -1 (T is the number of bins), we set it to T -\u03b3 and tune \u03b3.",
+                "cite_spans": [
+                    {
+                        "start": 92,
+                        "end": 96,
+                        "text": "[29]",
+                        "ref_id": "BIBREF28"
+                    }
+                ],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "E.1 One-blob encoding",
+                "sec_num": null
+            },
+            {
+                "text": "We fix and do not tune the following hyperparameters:\u2022 early-stopping-rounds = 50\u2022 od-pval = 0.001",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "E.2 Hyperparameter tuning configurations E.3 CatBoost",
+                "sec_num": null
+            },
+            {
+                "text": "For tuning on the MI and CO datasets, we set the task_type parameter to \"GPU\". In all other cases (including the evaluation on these two datasets), we set this parameter to \"CPU\". We fix and do not tune the following hyperparameters:\u2022 booster = \"gbtree\"\u2022 early-stopping-rounds = 50\u2022 n-estimators = 2000 ",
+                "cite_spans": [],
+                "ref_spans": [],
+                "eq_spans": [],
+                "section": "\u2022 iterations = 2000",
+                "sec_num": null
+            }
+        ],
+        "bib_entries": {
+            "BIBREF0": {
+                "ref_id": "b0",
+                "title": "Optuna: A next-generation hyperparameter optimization framework",
+                "authors": [
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Akiba",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Sano",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Yanase",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Ohta",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Koyama",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2019,
+                "venue": "KDD",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama. Optuna: A next-generation hyperparam- eter optimization framework. In KDD, 2019.",
+                "links": null
+            },
+            "BIBREF1": {
+                "ref_id": "b1",
+                "title": "Tabnet: Attentive interpretable tabular learning",
+                "authors": [
+                    {
+                        "first": "S",
+                        "middle": [
+                            "O"
+                        ],
+                        "last": "Arik",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Pfister",
+                        "suffix": ""
+                    }
+                ],
+                "year": 1908,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "S. O. Arik and T. Pfister. Tabnet: Attentive interpretable tabular learning. arXiv, 1908.07442v5, 2020.",
+                "links": null
+            },
+            "BIBREF2": {
+                "ref_id": "b2",
+                "title": "Gradient boosting neural networks: Grownet. arXiv",
+                "authors": [
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Badirli",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "X",
+                        "middle": [],
+                        "last": "Liu",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Z",
+                        "middle": [],
+                        "last": "Xing",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Bhowmik",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "K",
+                        "middle": [],
+                        "last": "Doan",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [
+                            "S"
+                        ],
+                        "last": "Keerthi",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2002,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "S. Badirli, X. Liu, Z. Xing, A. Bhowmik, K. Doan, and S. S. Keerthi. Gradient boosting neural networks: Grownet. arXiv, 2002.07971v2, 2020.",
+                "links": null
+            },
+            "BIBREF3": {
+                "ref_id": "b3",
+                "title": "Searching for exotic particles in high-energy physics with deep learning",
+                "authors": [
+                    {
+                        "first": "P",
+                        "middle": [],
+                        "last": "Baldi",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "P",
+                        "middle": [],
+                        "last": "Sadowski",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Whiteson",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2014,
+                "venue": "Nature Communications",
+                "volume": "5",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "P. Baldi, P. Sadowski, and D. Whiteson. Searching for exotic particles in high-energy physics with deep learning. Nature Communications, 5, 2014.",
+                "links": null
+            },
+            "BIBREF4": {
+                "ref_id": "b4",
+                "title": "Comparative accuracies of artificial neural networks and discriminant analysis in predicting forest cover types from cartographic variables",
+                "authors": [
+                    {
+                        "first": "J",
+                        "middle": [
+                            "A"
+                        ],
+                        "last": "Blackard",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [
+                            "J"
+                        ],
+                        "last": "Dean",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2000,
+                "venue": "Computers and Electronics in Agriculture",
+                "volume": "24",
+                "issue": "3",
+                "pages": "131--151",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "J. A. Blackard and D. J. Dean. Comparative accuracies of artificial neural networks and discriminant analysis in predicting forest cover types from cartographic variables. Computers and Electronics in Agriculture, 24(3):131-151, 2000.",
+                "links": null
+            },
+            "BIBREF5": {
+                "ref_id": "b5",
+                "title": "Thermometer encoding: One hot way to resist adversarial examples",
+                "authors": [
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Buckman",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Roy",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "C",
+                        "middle": [],
+                        "last": "Raffel",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "I",
+                        "middle": [
+                            "J"
+                        ],
+                        "last": "Goodfellow",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2018,
+                "venue": "International Conference on Learning Representations",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "J. Buckman, A. Roy, C. Raffel, and I. J. Goodfellow. Thermometer encoding: One hot way to resist adversarial examples. In International Conference on Learning Representations, 2018.",
+                "links": null
+            },
+            "BIBREF6": {
+                "ref_id": "b6",
+                "title": "Xgboost: A scalable tree boosting system",
+                "authors": [
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Chen",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "C",
+                        "middle": [],
+                        "last": "Guestrin",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2016,
+                "venue": "SIGKDD",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "T. Chen and C. Guestrin. Xgboost: A scalable tree boosting system. In SIGKDD, 2016.",
+                "links": null
+            },
+            "BIBREF7": {
+                "ref_id": "b7",
+                "title": "Deep neural networks for youtube recommendations",
+                "authors": [
+                    {
+                        "first": "P",
+                        "middle": [],
+                        "last": "Covington",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Adams",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "E",
+                        "middle": [],
+                        "last": "Sargin",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2016,
+                "venue": "RecSys",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "P. Covington, J. Adams, and E. Sargin. Deep neural networks for youtube recommendations. In RecSys, 2016.",
+                "links": null
+            },
+            "BIBREF8": {
+                "ref_id": "b8",
+                "title": "Approximation by superpositions of a sigmoidal function",
+                "authors": [
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Cybenko",
+                        "suffix": ""
+                    }
+                ],
+                "year": 1989,
+                "venue": "Math. Control. Signals Syst",
+                "volume": "2",
+                "issue": "4",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "G. Cybenko. Approximation by superpositions of a sigmoidal function. Math. Control. Signals Syst., 2(4), 1989.",
+                "links": null
+            },
+            "BIBREF9": {
+                "ref_id": "b9",
+                "title": "An image is worth 16x16 words: Transformers for image recognition at scale",
+                "authors": [
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Dosovitskiy",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "L",
+                        "middle": [],
+                        "last": "Beyer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Kolesnikov",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Weissenborn",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "X",
+                        "middle": [],
+                        "last": "Zhai",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Unterthiner",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Dehghani",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Minderer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Heigold",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Gelly",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "ICLR",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai, T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly, et al. An image is worth 16x16 words: Transformers for image recognition at scale. In ICLR, 2021.",
+                "links": null
+            },
+            "BIBREF10": {
+                "ref_id": "b10",
+                "title": "Supervised and unsupervised discretization of continuous features",
+                "authors": [
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Dougherty",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Kohavi",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Sahami",
+                        "suffix": ""
+                    }
+                ],
+                "year": 1995,
+                "venue": "ICML",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "J. Dougherty, R. Kohavi, and M. Sahami. Supervised and unsupervised discretization of continuous features. In ICML, 1995.",
+                "links": null
+            },
+            "BIBREF11": {
+                "ref_id": "b11",
+                "title": "Deep learning",
+                "authors": [
+                    {
+                        "first": "I",
+                        "middle": [],
+                        "last": "Goodfellow",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Y",
+                        "middle": [],
+                        "last": "Bengio",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Courville",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2016,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "I. Goodfellow, Y. Bengio, and A. Courville. Deep learning. MIT press, 2016.",
+                "links": null
+            },
+            "BIBREF12": {
+                "ref_id": "b12",
+                "title": "Revisiting deep learning models for tabular data",
+                "authors": [
+                    {
+                        "first": "Y",
+                        "middle": [],
+                        "last": "Gorishniy",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "I",
+                        "middle": [],
+                        "last": "Rubachev",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "V",
+                        "middle": [],
+                        "last": "Khrulkov",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Babenko",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "Y. Gorishniy, I. Rubachev, V. Khrulkov, and A. Babenko. Revisiting deep learning models for tabular data. In NeurIPS, 2021.",
+                "links": null
+            },
+            "BIBREF13": {
+                "ref_id": "b13",
+                "title": "An embedding learning framework for numerical features in CTR prediction",
+                "authors": [
+                    {
+                        "first": "H",
+                        "middle": [],
+                        "last": "Guo",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Chen",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Tang",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "W",
+                        "middle": [],
+                        "last": "Zhang",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Z",
+                        "middle": [],
+                        "last": "Li",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "X",
+                        "middle": [],
+                        "last": "He",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "KDD",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "H. Guo, B. Chen, R. Tang, W. Zhang, Z. Li, and X. He. An embedding learning framework for numerical features in CTR prediction. In KDD, 2021.",
+                "links": null
+            },
+            "BIBREF14": {
+                "ref_id": "b14",
+                "title": "The tree ensemble layer: Differentiability meets conditional computation",
+                "authors": [
+                    {
+                        "first": "H",
+                        "middle": [],
+                        "last": "Hazimeh",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "N",
+                        "middle": [],
+                        "last": "Ponomareva",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "P",
+                        "middle": [],
+                        "last": "Mol",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Z",
+                        "middle": [],
+                        "last": "Tan",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Mazumder",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2020,
+                "venue": "ICML",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "H. Hazimeh, N. Ponomareva, P. Mol, Z. Tan, and R. Mazumder. The tree ensemble layer: Differentiability meets conditional computation. In ICML, 2020.",
+                "links": null
+            },
+            "BIBREF15": {
+                "ref_id": "b15",
+                "title": "Approximation capabilities of multilayer feedforward networks",
+                "authors": [
+                    {
+                        "first": "K",
+                        "middle": [],
+                        "last": "Hornik",
+                        "suffix": ""
+                    }
+                ],
+                "year": 1991,
+                "venue": "Neural Networks",
+                "volume": "4",
+                "issue": "2",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "K. Hornik. Approximation capabilities of multilayer feedforward networks. Neural Networks, 4(2), 1991.",
+                "links": null
+            },
+            "BIBREF16": {
+                "ref_id": "b16",
+                "title": "Tabtransformer: Tabular data modeling using contextual embeddings. arXiv",
+                "authors": [
+                    {
+                        "first": "X",
+                        "middle": [],
+                        "last": "Huang",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Khetan",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Cvitkovic",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Z",
+                        "middle": [],
+                        "last": "Karnin",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2012,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "X. Huang, A. Khetan, M. Cvitkovic, and Z. Karnin. Tabtransformer: Tabular data modeling using contextual embeddings. arXiv, 2012.06678v1, 2020.",
+                "links": null
+            },
+            "BIBREF17": {
+                "ref_id": "b17",
+                "title": "Well-tuned simple nets excel on tabular datasets",
+                "authors": [
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Kadra",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Lindauer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "F",
+                        "middle": [],
+                        "last": "Hutter",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Grabocka",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "A. Kadra, M. Lindauer, F. Hutter, and J. Grabocka. Well-tuned simple nets excel on tabular datasets. In NeurIPS, 2021.",
+                "links": null
+            },
+            "BIBREF18": {
+                "ref_id": "b18",
+                "title": "Lightgbm: A highly efficient gradient boosting decision tree",
+                "authors": [
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Ke",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Q",
+                        "middle": [],
+                        "last": "Meng",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Finley",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Wang",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "W",
+                        "middle": [],
+                        "last": "Chen",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "W",
+                        "middle": [],
+                        "last": "Ma",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Q",
+                        "middle": [],
+                        "last": "Ye",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T.-Y",
+                        "middle": [],
+                        "last": "Liu",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2017,
+                "venue": "Advances in neural information processing systems",
+                "volume": "30",
+                "issue": "",
+                "pages": "3146--3154",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "G. Ke, Q. Meng, T. Finley, T. Wang, W. Chen, W. Ma, Q. Ye, and T.-Y. Liu. Lightgbm: A highly efficient gradient boosting decision tree. Advances in neural information processing systems, 30:3146-3154, 2017.",
+                "links": null
+            },
+            "BIBREF19": {
+                "ref_id": "b19",
+                "title": "Sparse spatial autoregressions",
+                "authors": [
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Kelley",
+                        "middle": [],
+                        "last": "Pace",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Barry",
+                        "suffix": ""
+                    }
+                ],
+                "year": 1997,
+                "venue": "",
+                "volume": "33",
+                "issue": "",
+                "pages": "291--297",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "R. Kelley Pace and R. Barry. Sparse spatial autoregressions. Statistics & Probability Letters, 33 (3):291-297, 1997.",
+                "links": null
+            },
+            "BIBREF20": {
+                "ref_id": "b20",
+                "title": "Self-normalizing neural networks",
+                "authors": [
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Klambauer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Unterthiner",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Mayr",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Hochreiter",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2017,
+                "venue": "NIPS",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "G. Klambauer, T. Unterthiner, A. Mayr, and S. Hochreiter. Self-normalizing neural networks. In NIPS, 2017.",
+                "links": null
+            },
+            "BIBREF21": {
+                "ref_id": "b21",
+                "title": "Scaling up the accuracy of naive-bayes classifiers: a decision-tree hybrid",
+                "authors": [
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Kohavi",
+                        "suffix": ""
+                    }
+                ],
+                "year": 1996,
+                "venue": "KDD",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "R. Kohavi. Scaling up the accuracy of naive-bayes classifiers: a decision-tree hybrid. In KDD, 1996.",
+                "links": null
+            },
+            "BIBREF22": {
+                "ref_id": "b22",
+                "title": "Error-based and entropy-based discretization of continuous features",
+                "authors": [
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Kohavi",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Sahami",
+                        "suffix": ""
+                    }
+                ],
+                "year": 1996,
+                "venue": "KDD",
+                "volume": "",
+                "issue": "",
+                "pages": "114--119",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "R. Kohavi and M. Sahami. Error-based and entropy-based discretization of continuous features. In KDD, pages 114-119. AAAI Press, 1996.",
+                "links": null
+            },
+            "BIBREF23": {
+                "ref_id": "b23",
+                "title": "Self-attention between datapoints: Going beyond individual input-output pairs in deep learning",
+                "authors": [
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Kossen",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "N",
+                        "middle": [],
+                        "last": "Band",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "C",
+                        "middle": [],
+                        "last": "Lyle",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [
+                            "N"
+                        ],
+                        "last": "Gomez",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Rainforth",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Y",
+                        "middle": [],
+                        "last": "Gal",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "J. Kossen, N. Band, C. Lyle, A. N. Gomez, T. Rainforth, and Y. Gal. Self-attention between datapoints: Going beyond individual input-output pairs in deep learning. In NeurIPS, 2021.",
+                "links": null
+            },
+            "BIBREF24": {
+                "ref_id": "b24",
+                "title": "Learnable fourier features for multi-dimensional spatial positional encoding",
+                "authors": [
+                    {
+                        "first": "Y",
+                        "middle": [],
+                        "last": "Li",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Si",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Li",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "C",
+                        "middle": [],
+                        "last": "Hsieh",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Bengio",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "Y. Li, S. Si, G. Li, C. Hsieh, and S. Bengio. Learnable fourier features for multi-dimensional spatial positional encoding. In NeurIPS, 2021.",
+                "links": null
+            },
+            "BIBREF25": {
+                "ref_id": "b25",
+                "title": "Decoupled weight decay regularization",
+                "authors": [
+                    {
+                        "first": "I",
+                        "middle": [],
+                        "last": "Loshchilov",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "F",
+                        "middle": [],
+                        "last": "Hutter",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2019,
+                "venue": "ICLR",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "I. Loshchilov and F. Hutter. Decoupled weight decay regularization. In ICLR, 2019.",
+                "links": null
+            },
+            "BIBREF26": {
+                "ref_id": "b26",
+                "title": "Gesture unit segmentation using support vector machines: segmenting gestures from rest positions",
+                "authors": [
+                    {
+                        "first": "R",
+                        "middle": [
+                            "C B"
+                        ],
+                        "last": "Madeo",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "C",
+                        "middle": [
+                            "A M"
+                        ],
+                        "last": "Lima",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [
+                            "M"
+                        ],
+                        "last": "Peres",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2013,
+                "venue": "Proceedings of the 28th Annual ACM Symposium on Applied Computing, SAC",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "R. C. B. Madeo, C. A. M. Lima, and S. M. Peres. Gesture unit segmentation using support vector machines: segmenting gestures from rest positions. In Proceedings of the 28th Annual ACM Symposium on Applied Computing, SAC, 2013.",
+                "links": null
+            },
+            "BIBREF27": {
+                "ref_id": "b27",
+                "title": "Nerf: Representing scenes as neural radiance fields for view synthesis",
+                "authors": [
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Mildenhall",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "P",
+                        "middle": [
+                            "P"
+                        ],
+                        "last": "Srinivasan",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Tancik",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [
+                            "T"
+                        ],
+                        "last": "Barron",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Ramamoorthi",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Ng",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2020,
+                "venue": "ECCV",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoorthi, and R. Ng. Nerf: Representing scenes as neural radiance fields for view synthesis. In ECCV, 2020.",
+                "links": null
+            },
+            "BIBREF28": {
+                "ref_id": "b28",
+                "title": "Neural importance sampling",
+                "authors": [
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "M\u00fcller",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Mcwilliams",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "F",
+                        "middle": [],
+                        "last": "Rousselle",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Gross",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Nov\u00e1k",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2019,
+                "venue": "ACM Trans. Graph",
+                "volume": "38",
+                "issue": "5",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "T. M\u00fcller, B. McWilliams, F. Rousselle, M. Gross, and J. Nov\u00e1k. Neural importance sampling. ACM Trans. Graph., 38(5), 2019.",
+                "links": null
+            },
+            "BIBREF29": {
+                "ref_id": "b29",
+                "title": "Scikit-learn: Machine learning in Python",
+                "authors": [
+                    {
+                        "first": "F",
+                        "middle": [],
+                        "last": "Pedregosa",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Varoquaux",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Gramfort",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "V",
+                        "middle": [],
+                        "last": "Michel",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Thirion",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "O",
+                        "middle": [],
+                        "last": "Grisel",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Blondel",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "P",
+                        "middle": [],
+                        "last": "Prettenhofer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Weiss",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "V",
+                        "middle": [],
+                        "last": "Dubourg",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Vanderplas",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Passos",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Cournapeau",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Brucher",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Perrot",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "E",
+                        "middle": [],
+                        "last": "Duchesnay",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2011,
+                "venue": "Journal of Machine Learning Research",
+                "volume": "12",
+                "issue": "",
+                "pages": "2825--2830",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "F. Pedregosa, G. Varoquaux, A. Gramfort, V. Michel, B. Thirion, O. Grisel, M. Blondel, P. Prettenhofer, R. Weiss, V. Dubourg, J. Vanderplas, A. Passos, D. Cournapeau, M. Brucher, M. Perrot, and E. Duchesnay. Scikit-learn: Machine learning in Python. Journal of Machine Learning Research, 12:2825-2830, 2011.",
+                "links": null
+            },
+            "BIBREF30": {
+                "ref_id": "b30",
+                "title": "Neural oblivious decision ensembles for deep learning on tabular data",
+                "authors": [
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Popov",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Morozov",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Babenko",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2020,
+                "venue": "ICLR",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "S. Popov, S. Morozov, and A. Babenko. Neural oblivious decision ensembles for deep learning on tabular data. In ICLR, 2020.",
+                "links": null
+            },
+            "BIBREF31": {
+                "ref_id": "b31",
+                "title": "Catboost: unbiased boosting with categorical features",
+                "authors": [
+                    {
+                        "first": "L",
+                        "middle": [],
+                        "last": "Prokhorenkova",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Gusev",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Vorobev",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [
+                            "V"
+                        ],
+                        "last": "Dorogush",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Gulin",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2018,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "L. Prokhorenkova, G. Gusev, A. Vorobev, A. V. Dorogush, and A. Gulin. Catboost: unbiased boosting with categorical features. In NeurIPS, 2018.",
+                "links": null
+            },
+            "BIBREF32": {
+                "ref_id": "b32",
+                "title": "Introducing LETOR 4.0 datasets. arXiv, 1306",
+                "authors": [
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Qin",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Liu",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2013,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "T. Qin and T. Liu. Introducing LETOR 4.0 datasets. arXiv, 1306.2597v1, 2013.",
+                "links": null
+            },
+            "BIBREF33": {
+                "ref_id": "b33",
+                "title": "On the spectral bias of neural networks",
+                "authors": [
+                    {
+                        "first": "N",
+                        "middle": [],
+                        "last": "Rahaman",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Baratin",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Arpit",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "F",
+                        "middle": [],
+                        "last": "Draxler",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Lin",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "F",
+                        "middle": [
+                            "A"
+                        ],
+                        "last": "Hamprecht",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Y",
+                        "middle": [],
+                        "last": "Bengio",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [
+                            "C"
+                        ],
+                        "last": "Courville",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2019,
+                "venue": "ICML",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "N. Rahaman, A. Baratin, D. Arpit, F. Draxler, M. Lin, F. A. Hamprecht, Y. Bengio, and A. C. Courville. On the spectral bias of neural networks. In ICML, 2019.",
+                "links": null
+            },
+            "BIBREF34": {
+                "ref_id": "b34",
+                "title": "Hopfield networks is all you need",
+                "authors": [
+                    {
+                        "first": "H",
+                        "middle": [],
+                        "last": "Ramsauer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Sch\u00e4fl",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Lehner",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "P",
+                        "middle": [],
+                        "last": "Seidl",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Widrich",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "L",
+                        "middle": [],
+                        "last": "Gruber",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Holzleitner",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Adler",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [
+                            "P"
+                        ],
+                        "last": "Kreil",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [
+                            "K"
+                        ],
+                        "last": "Kopp",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Klambauer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Brandstetter",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Hochreiter",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "ICLR",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "H. Ramsauer, B. Sch\u00e4fl, J. Lehner, P. Seidl, M. Widrich, L. Gruber, M. Holzleitner, T. Adler, D. P. Kreil, M. K. Kopp, G. Klambauer, J. Brandstetter, and S. Hochreiter. Hopfield networks is all you need. In ICLR, 2021.",
+                "links": null
+            },
+            "BIBREF35": {
+                "ref_id": "b35",
+                "title": "Tabular data: Deep learning is not all you need. arXiv",
+                "authors": [
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Shwartz-Ziv",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Armon",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "R. Shwartz-Ziv and A. Armon. Tabular data: Deep learning is not all you need. arXiv, 2106.03253v1, 2021.",
+                "links": null
+            },
+            "BIBREF36": {
+                "ref_id": "b36",
+                "title": "Comment volume prediction using neural networks and decision trees",
+                "authors": [
+                    {
+                        "first": "K",
+                        "middle": [],
+                        "last": "Singh",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [
+                            "K"
+                        ],
+                        "last": "Sandhu",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Kumar",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2015,
+                "venue": "IEEE UKSim-AMSS 17th International Conference on Computer Modelling and Simulation",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "K. Singh, R. K. Sandhu, and D. Kumar. Comment volume prediction using neural networks and decision trees. In IEEE UKSim-AMSS 17th International Conference on Computer Modelling and Simulation, UKSim, 2015.",
+                "links": null
+            },
+            "BIBREF37": {
+                "ref_id": "b37",
+                "title": "Implicit neural representations with periodic activation functions",
+                "authors": [
+                    {
+                        "first": "V",
+                        "middle": [],
+                        "last": "Sitzmann",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [
+                            "N P"
+                        ],
+                        "last": "Martel",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [
+                            "W"
+                        ],
+                        "last": "Bergman",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [
+                            "B"
+                        ],
+                        "last": "Lindell",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Wetzstein",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2020,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G. Wetzstein. Implicit neural representations with periodic activation functions. In NeurIPS, 2020.",
+                "links": null
+            },
+            "BIBREF38": {
+                "ref_id": "b38",
+                "title": "SAINT: improved neural networks for tabular data via row attention and contrastive pre-training. arXiv",
+                "authors": [
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Somepalli",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Goldblum",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Schwarzschild",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "C",
+                        "middle": [
+                            "B"
+                        ],
+                        "last": "Bruss",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "T",
+                        "middle": [],
+                        "last": "Goldstein",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2021,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "G. Somepalli, M. Goldblum, A. Schwarzschild, C. B. Bruss, and T. Goldstein. SAINT: im- proved neural networks for tabular data via row attention and contrastive pre-training. arXiv, 2106.01342v1, 2021.",
+                "links": null
+            },
+            "BIBREF39": {
+                "ref_id": "b39",
+                "title": "Autoint: Automatic feature interaction learning via self-attentive neural networks",
+                "authors": [
+                    {
+                        "first": "W",
+                        "middle": [],
+                        "last": "Song",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "C",
+                        "middle": [],
+                        "last": "Shi",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Z",
+                        "middle": [],
+                        "last": "Xiao",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Z",
+                        "middle": [],
+                        "last": "Duan",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Y",
+                        "middle": [],
+                        "last": "Xu",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Zhang",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Tang",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2019,
+                "venue": "CIKM",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "W. Song, C. Shi, Z. Xiao, Z. Duan, Y. Xu, M. Zhang, and J. Tang. Autoint: Automatic feature interaction learning via self-attentive neural networks. In CIKM, 2019.",
+                "links": null
+            },
+            "BIBREF40": {
+                "ref_id": "b40",
+                "title": "Methods for numeracy-preserving word embeddings",
+                "authors": [
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Sundararaman",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Si",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "V",
+                        "middle": [],
+                        "last": "Subramanian",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Wang",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Hazarika",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "L",
+                        "middle": [],
+                        "last": "Carin",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2020,
+                "venue": "Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "D. Sundararaman, S. Si, V. Subramanian, G. Wang, D. Hazarika, and L. Carin. Methods for numeracy-preserving word embeddings. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing, 2020.",
+                "links": null
+            },
+            "BIBREF41": {
+                "ref_id": "b41",
+                "title": "Fourier features let networks learn high frequency functions in low dimensional domains",
+                "authors": [
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Tancik",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "P",
+                        "middle": [
+                            "P"
+                        ],
+                        "last": "Srinivasan",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Mildenhall",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "S",
+                        "middle": [],
+                        "last": "Fridovich-Keil",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "N",
+                        "middle": [],
+                        "last": "Raghavan",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "U",
+                        "middle": [],
+                        "last": "Singhal",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Ramamoorthi",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [
+                            "T"
+                        ],
+                        "last": "Barron",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Ng",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2020,
+                "venue": "NeurIPS",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "M. Tancik, P. P. Srinivasan, B. Mildenhall, S. Fridovich-Keil, N. Raghavan, U. Singhal, R. Ra- mamoorthi, J. T. Barron, and R. Ng. Fourier features let networks learn high frequency functions in low dimensional domains. In NeurIPS, 2020.",
+                "links": null
+            },
+            "BIBREF42": {
+                "ref_id": "b42",
+                "title": "Bayesian optimization is superior to random search for machine learning hyperparameter tuning: Analysis of the black-box optimization challenge",
+                "authors": [
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Turner",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "D",
+                        "middle": [],
+                        "last": "Eriksson",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Mccourt",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Kiili",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "E",
+                        "middle": [],
+                        "last": "Laaksonen",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "Z",
+                        "middle": [],
+                        "last": "Xu",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "I",
+                        "middle": [],
+                        "last": "Guyon",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2020,
+                "venue": "",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "R. Turner, D. Eriksson, M. McCourt, J. Kiili, E. Laaksonen, Z. Xu, and I. Guyon. Bayesian optimization is superior to random search for machine learning hyperparameter tuning: Analysis of the black-box optimization challenge 2020. arXiv, https://arxiv.org/abs/2104.10201v1, 2021.",
+                "links": null
+            },
+            "BIBREF43": {
+                "ref_id": "b43",
+                "title": "Openml: networked science in machine learning. arXiv, 1407",
+                "authors": [
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Vanschoren",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [
+                            "N"
+                        ],
+                        "last": "Van Rijn",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Bischl",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "L",
+                        "middle": [],
+                        "last": "Torgo",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2014,
+                "venue": "",
+                "volume": "7722",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "J. Vanschoren, J. N. van Rijn, B. Bischl, and L. Torgo. Openml: networked science in machine learning. arXiv, 1407.7722v1, 2014.",
+                "links": null
+            },
+            "BIBREF44": {
+                "ref_id": "b44",
+                "title": "Attention is all you need",
+                "authors": [
+                    {
+                        "first": "A",
+                        "middle": [],
+                        "last": "Vaswani",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "N",
+                        "middle": [],
+                        "last": "Shazeer",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "N",
+                        "middle": [],
+                        "last": "Parmar",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "J",
+                        "middle": [],
+                        "last": "Uszkoreit",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "L",
+                        "middle": [],
+                        "last": "Jones",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "A",
+                        "middle": [
+                            "N"
+                        ],
+                        "last": "Gomez",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "L",
+                        "middle": [],
+                        "last": "Kaiser",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "I",
+                        "middle": [],
+                        "last": "Polosukhin",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2017,
+                "venue": "NIPS",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin. Attention is all you need. In NIPS, 2017.",
+                "links": null
+            },
+            "BIBREF45": {
+                "ref_id": "b45",
+                "title": "Deep & cross network for ad click predictions",
+                "authors": [
+                    {
+                        "first": "R",
+                        "middle": [],
+                        "last": "Wang",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "B",
+                        "middle": [],
+                        "last": "Fu",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "G",
+                        "middle": [],
+                        "last": "Fu",
+                        "suffix": ""
+                    },
+                    {
+                        "first": "M",
+                        "middle": [],
+                        "last": "Wang",
+                        "suffix": ""
+                    }
+                ],
+                "year": 2017,
+                "venue": "ADKDD",
+                "volume": "",
+                "issue": "",
+                "pages": "",
+                "other_ids": {},
+                "num": null,
+                "urls": [],
+                "raw_text": "R. Wang, B. Fu, G. Fu, and M. Wang. Deep & cross network for ad click predictions. In ADKDD, 2017. ResNet",
+                "links": null
+            }
+        },
+        "ref_entries": {
+            "FIGREF0": {
+                "fig_num": "0",
+                "uris": null,
+                "type_str": "figure",
+                "text": "632 0.856 0.495 3.204 0.854 0.818 0.720 5.686 0.912 0.964 0.747 MLP-L 0.639 0.861 0.475 3.123 0.856 0.820 0.723 5.684 0.916 0.963 0.748 MLP-LR 0.642 0.860 0.471 3.084 0.857 0.819 0.726 5.625 0.923 0.963 0.746",
+                "num": null
+            },
+            "FIGREF1": {
+                "fig_num": "4",
+                "uris": null,
+                "type_str": "figure",
+                "text": "Figure 4: Obtaining bins for PLE from decision trees.",
+                "num": null
+            },
+            "FIGREF2": {
+                "fig_num": "5",
+                "uris": null,
+                "type_str": "figure",
+                "text": "Figure 5: RMSE (averaged over five random seeds) of different approaches on the same synthetic GBDT-friendly task. Using PLE-representations (\"-Q\") instead of scalar values improves the performance of MLP and Transformer. Note that in practice, increasing the number of bins does not always lead to better results.",
+                "num": null
+            },
+            "FIGREF3": {
+                "fig_num": "7",
+                "uris": null,
+                "type_str": "figure",
+                "text": "Table 17: Transformer hyperparameter space. Here (A) = {SA, CO, MI} and (B) = the rest Parameter (Datasets) Distribution # Layers (A) UniformInt[2, 4], (B) UniformInt[1, 4] Embedding size (A) UniformInt[192, 512], (B) UniformInt[96, 512] Residual dropout (A) Const(0.0), (B) {0, Uniform[0, 0.2]} Attention dropout (A,B) Uniform[0, 0.5] FFN dropout (A,B) Uniform[0, 0.5] FFN factor (A,B) Uniform[ 2 /3, 8 /3] Learning rate (A) LogUniform[1e-5, 3e-4], (B) LogUniform[1e-5, 1e-3] Weight decay (A) Const(1e-5), (B) LogUniform[1e-6, 1e-4]",
+                "num": null
+            },
+            "FIGREF4": {
+                "fig_num": "44194",
+                "uris": null,
+                "type_str": "figure",
+                "text": ".7e-3 0.861\u00b13.5e-3 0.433\u00b11.8e-3 3.115\u00b11.9e-2 0.872\u00b19.0e-4 0.824\u00b11.1e-3 0.726\u00b11.0e-3 5.324\u00b14.1e-2 0.923\u00b13.6e-4 0.966\u00b13.3e-4 0.743\u00b13.1e-4 XGBoost 0.678\u00b14.9e-3 0.858\u00b12.2e-3 0.436\u00b12.5e-3 3.160\u00b16.9e-3 0.874\u00b18.2e-4 0.825\u00b12.3e-3 0.724\u00b11.0e-3 5.383\u00b12.9e-2 0.918\u00b15.0e-3 0.969\u00b16.1e-4 0.742\u00b11.6e-4 MLP 0.632\u00b11.4e-2 0.856\u00b12.8e-3 0.495\u00b14.3e-3 3.204\u00b14.0e-2 0.854\u00b11.6e-3 0.818\u00b13.1e-3 0.720\u00b12.3e-3 5.686\u00b14.7e-2 0.912\u00b14.3e-4 0.964\u00b18.6e-4 0.747\u00b12.5e-4 MLP-L 0.639\u00b11.3e-2 0.861\u00b12.1e-3 0.475\u00b15.4e-3 3.123\u00b14.5e-2 0.856\u00b11.6e-3 0.820\u00b11.5e-3 0.723\u00b11.6e-3 5.684\u00b14.5e-2 0.916\u00b13.5e-4 0.963\u00b19.3e-4 0.748\u00b14.1e-4 MLP-LR 0.642\u00b11.5e-2 0.860\u00b13.0e-3 0.471\u00b12.6e-3 3.084\u00b12.7e-2 0.857\u00b11.9e-3 0.819\u00b11.6e-3 0.726\u00b11.9e-3 5.625\u00b15.6e-2 0.923\u00b13.1e-4 0.963\u00b11.4e-3 0.746\u00b13.9e-4 MLP-LRLR 0.654\u00b11.7e-2 0.861\u00b12.6e-3 0.460\u00b13.8e-3 3.070\u00b13.6e-2 0.857\u00b11.4e-3 0.819\u00b12.2e-3 0.725\u00b11.2e-3 5.551\u00b14.6e-2 0.923\u00b13.0e-4 0.963\u00b11.4e-3 0.746\u00b13.0e-4 MLP-Q 0.653\u00b18.9e-3 0.854\u00b13.0e-3 0.464\u00b13.1e-3 3.163\u00b13.1e-2 0.859\u00b11.6e-3 0.816\u00b12.6e-3 0.721\u00b11.0e-3 5.766\u00b15.3e-2 0.922\u00b16.3e-4 0.968\u00b16.9e-4 0.750\u00b13.7e-4 MLP-Q-LR 0.646\u00b16.3e-3 0.857\u00b12.6e-3 0.455\u00b13.4e-3 3.184\u00b13.1e-2 0.863\u00b11.7e-3 0.811\u00b11.8e-3 0.720\u00b11.5e-3 5.394\u00b11.5e-1 0.923\u00b16.1e-4 0.969\u00b14.8e-4 0.747\u00b13.9e-4 MLP-Q-LRLR 0.644\u00b16.2e-3 0.859\u00b12.2e-3 0.452\u00b14.3e-3 3.118\u00b14.6e-2 0.869\u00b11.5e-3 0.812\u00b12.5e-3 0.724\u00b11.3e-3 5.618\u00b12.0e-1 0.924\u00b14.5e-4 0.969\u00b11.2e-3 0.748\u00b14.6e-4 MLP-T 0.647\u00b15.7e-3 0.861\u00b11.1e-3 0.447\u00b12.0e-3 3.149\u00b15.2e-2 0.864\u00b16.3e-4 0.821\u00b11.8e-3 0.720\u00b11.9e-3 5.577\u00b13.7e-2 0.923\u00b13.0e-4 0.967\u00b11.1e-3 0.749\u00b14.4e-4 MLP-T-LR 0.640\u00b16.9e-3 0.861\u00b12.0e-3 0.439\u00b13.7e-3 3.207\u00b15.2e-2 0.868\u00b11.1e-3 0.818\u00b11.3e-3 0.724\u00b11.7e-3 5.508\u00b13.0e-2 0.924\u00b12.4e-4 0.968\u00b17.2e-4 0.747\u00b15.7e-4 MLP-T-LRLR 0.629\u00b11.0e-2 0.857\u00b12.4e-3 0.446\u00b13.6e-3 3.153\u00b14.0e-2 0.870\u00b19.9e-4 0.818\u00b12.1e-3 0.725\u00b11.3e-3 5.553\u00b12.4e-2 0.924\u00b13.6e-4 0.967\u00b18.5e-4 0.748\u00b15.8e-4 MLP-P 0.631\u00b11.7e-2 0.860\u00b13.1e-3 0.489\u00b12.4e-3 3.129\u00b14.3e-2 0.869\u00b11.5e-3 0.807\u00b14.3e-3 0.723\u00b11.5e-3 5.845\u00b16.4e-2 0.923\u00b14.3e-4 0.968\u00b19.0e-4 0.747\u00b13.1e-4 MLP-PL 0.641\u00b11.0e-2 0.859\u00b12.4e-3 0.467\u00b12.9e-3 3.113\u00b13.1e-2 0.868\u00b11.1e-3 0.819\u00b11.7e-3 0.727\u00b11.7e-3 5.530\u00b19.5e-2 0.924\u00b14.0e-4 0.969\u00b15.0e-4 0.746\u00b12.6e-4 MLP-PLR 0.674\u00b11.0e-2 0.857\u00b12.4e-3 0.467\u00b15.8e-3 3.050\u00b13.4e-2 0.870\u00b11.0e-3 0.819\u00b12.0e-3 0.728\u00b11.6e-3 5.525\u00b13.5e-2 0.924\u00b14.0e-4 0.970\u00b19.5e-4 0.746\u00b13.0e-4 MLP-PLRLR 0.676\u00b11.6e-2 0.863\u00b13.1e-3 0.456\u00b13.7e-3 3.038\u00b12.3e-2 0.871\u00b11.4e-3 0.818\u00b11.7e-3 0.725\u00b11.6e-3 5.606\u00b18.9e-2 0.924\u00b12.8e-4 0.968\u00b12.0e-3 0.744\u00b12.8e-4 MLP-AutoDis 0.649\u00b11.2e-2 0.857\u00b13.2e-3 0.474\u00b15.1e-3 3.165\u00b11.8e-2 0.859\u00b11.3e-3 0.807\u00b12.4e-3 0.725\u00b11.9e-3 5.670\u00b16.1e-2 0.924\u00b13.0e-4 0.963\u00b18.7e-MLP-DICE 0.610\u00b11.2e-2 0.858\u00b12.9e-3 0.491\u00b13.0e-3 3.146\u00b13.5e-2 0.860\u00b11.4e-3 0.778\u00b14.9e-3 0.720\u00b19.8e-4 5.726\u00b13.6e-2 0.920\u00b14.8e-4 0.964\u00b11.1e-3 0.748\u00b12.9e-4 ResNet 0.655\u00b12.0e-2 0.858\u00b13.1e-3 0.490\u00b15.0e-3 3.153\u00b13.6e-2 0.855\u00b18.9e-4 0.817\u00b13.4e-3 0.729\u00b12.1e-3 5.681\u00b15.3e-2 0.916\u00b15.0e-4 0.965\u00b18.3e-4 0.747\u00b14.1e-4 ResNet-L 0.644\u00b11.9e-2 0.859\u00b11.8e-3 0.490\u00b16.6e-3 3.126\u00b15.6e-2 0.855\u00b11.4e-3 0.813\u00b12.2e-3 0.730\u00b19.7e-4 5.758\u00b18.0e-2 0.915\u00b14.3e-4 0.964\u00b11.8e-3 0.747\u00b14.7e-4 ResNet-LR 0.635\u00b12.3e-2 0.861\u00b12.2e-3 0.465\u00b13.5e-3 3.096\u00b15.8e-2 0.856\u00b11.6e-3 0.815\u00b13.3e-3 0.729\u00b11.3e-3 5.574\u00b17.4e-2 0.922\u00b14.4e-4 0.967\u00b18.8e-4 0.746\u00b14.4e-4 ResNet-Q 0.658\u00b18.0e-3 0.858\u00b12.4e-3 0.454\u00b13.6e-3 3.251\u00b13.8e-2 0.860\u00b11.3e-3 0.811\u00b11.6e-3 0.718\u00b11.0e-3 5.828\u00b19.3e-2 0.921\u00b19.1e-4 0.970\u00b15.7e-4 0.749\u00b12.9e-4 ResNet-Q-LR 0.650\u00b19.2e-3 0.854\u00b14.2e-3 0.446\u00b15.1e-3 3.217\u00b15.2e-2 0.865\u00b12.2e-3 0.808\u00b12.6e-3 0.722\u00b11.9e-3 5.514\u00b16.0e-2 0.922\u00b15.9e-4 0.972\u00b13.7e-4 0.748\u00b15.0e-4 ResNet-T 0.657\u00b19.0e-3 0.859\u00b12.9e-3 0.441\u00b13.2e-3 3.151\u00b15.9e-2 0.866\u00b11.8e-3 0.817\u00b11.7e-3 0.724\u00b12.0e-3 5.781\u00b14.1e-2 0.923\u00b16.0e-4 0.970\u00b11.1e-3 0.749\u00b17.8e-4 ResNet-T-LR 0.650\u00b11.2e-2 0.861\u00b12.0e-3 0.438\u00b12.9e-3 3.163\u00b16.1e-2 0.870\u00b11.5e-3 0.813\u00b12.5e-3 0.725\u00b11.6e-3 5.687\u00b15.9e-2 0.922\u00b18.1e-4 0.972\u00b13.7e-4 0.748\u00b16.1e-4 ResNet-P 0.630\u00b11.8e-2 0.858\u00b13.1e-3 0.471\u00b16.5e-3 3.147\u00b12.9e-2 0.866\u00b11.7e-3 0.812\u00b11.6e-3 0.729\u00b17.0e-4 5.566\u00b17.5e-2 0.922\u00b16.7e-4 0.968\u00b17.7e-4 0.747\u00b16.3e-4 ResNet-PLR 0.651\u00b11.3e-2 0.859\u00b13.7e-3 0.461\u00b14.2e-3 3.188\u00b17.3e-2 0.869\u00b11.7e-3 0.816\u00b12.5e-3 0.728\u00b11.8e-3 5.582\u00b14.9e-2 0.923\u00b15.9e-4 0.972\u00b15.1e-4 0.747\u00b16.4e-4 Transformer-L 0.632\u00b12.0e-2 0.860\u00b13.0e-3 0.465\u00b14.8e-3 3.239\u00b13.2e-2 0.858\u00b11.3e-3 0.817\u00b12.3e-3 0.725\u00b13.2e-3 5.602\u00b14.8e-2 0.924\u00b14.4e-4 0.971\u00b16.8e-4 0.746\u00b15.7e-4 Transformer-LR 0.614\u00b14.5e-2 0.860\u00b12.2e-3 0.456\u00b13.7e-3 3.261\u00b15.6e-2 0.858\u00b11.6e-3 0.817\u00b12.2e-3 0.729\u00b11.5e-3 5.644\u00b15.5e-2 0.924\u00b13.9e-4 0.971\u00b17.6e-4 0.746\u00b15.8e-4 Transformer-Q-L 0.659\u00b18.7e-3 0.856\u00b15.9e-3 0.451\u00b15.4e-3 3.319\u00b14.2e-2 0.867\u00b11.6e-3 0.812\u00b12.6e-3 0.729\u00b12.9e-3 5.741\u00b14.5e-2 0.924\u00b13.8e-4 0.973\u00b16.1e-4 0.747\u00b17.9e-4 Transformer-Q-LR 0.659\u00b11.2e-2 0.857\u00b12.0e-3 0.448\u00b16.1e-3 3.270\u00b14.6e-2 0.867\u00b11.1e-3 0.812\u00b12.5e-3 0.723\u00b13.3e-3 5.683\u00b14.8e-2 0.923\u00b15.8e-4 0.972\u00b14.2e-4 0.748\u00b17.7e-4 Transformer-T-L 0.663\u00b17.4e-3 0.861\u00b11.4e-3 0.454\u00b14.7e-3 3.197\u00b12.9e-2 0.871\u00b11.4e-3 0.817\u00b12.6e-3 0.726\u00b11.7e-3 5.803\u00b16.5e-2 0.924\u00b13.3e-4 0.974\u00b14.5e-4 0.747\u00b16.5e-4 Transformer-T-LR 0.665\u00b16.6e-3 0.860\u00b13.4e-3 0.442\u00b15.3e-3 3.219\u00b13.2e-2 0.870\u00b11.5e-3 0.818\u00b12.6e-3 0.729\u00b11.4e-3 5.699\u00b16.7e-2 0.924\u00b14.4e-4 0.973\u00b15.6e-4 0.747\u00b18.4e-4 Transformer-PLR 0.646\u00b12.0e-2 0.863\u00b12.7e-3 0.464\u00b12.8e-3 3.162\u00b14.2e-2 0.870\u00b11.5e-3 0.814\u00b12.1e-3 0.730\u00b11.9e-3 5.760\u00b11.1e-1 0.924\u00b15.2e-4 0.972\u00b11.1e-3 0.746\u00b15.9e-.9e-3 0.861\u00b12.4e-4 0.430\u00b11.1e-3 3.093\u00b15.1e-3 0.873\u00b15.1e-4 0.825\u00b14.7e-4 0.727\u00b13.6e-4 5.226\u00b11.3e-2 0.924\u00b11.0e-4 0.967\u00b11.4e-4 0.741\u00b11.4e-4 XGBoost 0.683\u00b11.3e-3 0.859\u00b12.4e-4 0.434\u00b17.1e-4 3.152\u00b11.2e-3 0.875\u00b15.5e-4 0.827\u00b18.4e-4 0.726\u00b18.1e-4 5.338\u00b11.9e-2 0.919\u00b14.8e-4 0.969\u00b18.8e-5 0.742\u00b15.3e-5 MLP 0.665\u00b12.7e-3 0.856\u00b11.2e-3 0.486\u00b17.8e-4 3.109\u00b11.0e-2 0.856\u00b14.6e-4 0.822\u00b18.0e-4 0.727\u00b11.7e-3 5.616\u00b17.6e-3 0.913\u00b18.2e-5 0.968\u00b14.8e-4 0.746\u00b11.1e-4 MLP-L 0.670\u00b13.2e-3 0.862\u00b11.5e-3 0.471\u00b14.7e-4 3.021\u00b11.1e-2 0.857\u00b15.9e-4 0.824\u00b11.1e-3 0.728\u00b12.7e-4 5.508\u00b12.1e-2 0.916\u00b11.5e-4 0.971\u00b16.8e-5 0.746\u00b12.3e-4 MLP-LR 0.679\u00b14.9e-3 0.861\u00b19.4e-4 0.463\u00b11.9e-3 3.012\u00b11.8e-3 0.859\u00b18.0e-4 0.826\u00b11.6e-3 0.731\u00b11.1e-3 5.477\u00b13.6e-2 0.924\u00b17.1e-5 0.972\u00b17.6e-5 0.744\u00b11.6e-4 MLP-LRLR 0.676\u00b14.8e-3 0.863\u00b11.4e-3 0.453\u00b11.1e-3 3.017\u00b11.1e-2 0.858\u00b11.6e-4 0.828\u00b11.3e-3 0.725\u00b15.9e-4 5.427\u00b12.1e-2 0.924\u00b11.2e-4 0.973\u00b11.8e-4 0.744\u00b11.8e-4 MLP-Q 0.677\u00b14.8e-3 0.856\u00b11.4e-3 0.458\u00b11.7e-4 3.080\u00b11.5e-2 0.862\u00b14.0e-4 0.822\u00b11.7e-3 0.723\u00b15.6e-4 5.706\u00b11.9e-2 0.922\u00b11.7e-4 0.973\u00b12.1e-4 0.748\u00b12.2e-4 MLP-Q-LR 0.682\u00b13.9e-3 0.859\u00b14.7e-4 0.433\u00b11.9e-3 3.080\u00b19.7e-3 0.867\u00b14.2e-4 0.818\u00b11.4e-3 0.724\u00b13.2e-4 5.144\u00b11.4e-2 0.924\u00b13.7e-4 0.974\u00b11.5e-4 0.745\u00b12.8e-4 MLP-Q-LRLR 0.674\u00b12.9e-3 0.862\u00b11.5e-3 0.438\u00b12.1e-3 3.066\u00b19.9e-3 0.870\u00b14.1e-4 0.817\u00b12.4e-3 0.727\u00b12.1e-4 5.268\u00b17.5e-2 0.924\u00b13.1e-5 0.973\u00b12.8e-4 0.745\u00b11.7e-4 MLP-T 0.669\u00b14.3e-3 0.861\u00b11.0e-3 0.439\u00b12.1e-4 3.058\u00b11.4e-2 0.865\u00b15.3e-4 0.822\u00b16.3e-4 0.724\u00b17.2e-4 5.507\u00b12.0e-2 0.923\u00b18.5e-5 0.972\u00b12.7e-4 0.747\u00b14.1e-5 MLP-T-LR 0.673\u00b18.3e-4 0.861\u00b18.5e-4 0.435\u00b11.1e-3 3.099\u00b12.4e-2 0.870\u00b16.6e-4 0.821\u00b12.6e-4 0.727\u00b17.2e-4 5.409\u00b16.2e-3 0.924\u00b11.3e-4 0.973\u00b11.3e-4 0.746\u00b11.6e-4 MLP-T-LRLR 0.670\u00b14.1e-4 0.860\u00b12.5e-3 0.431\u00b16.0e-4 3.056\u00b12.2e-2 0.870\u00b12.6e-4 0.826\u00b15.0e-4 0.725\u00b17.4e-4 5.440\u00b11.8e-3 0.925\u00b16.1e-5 0.973\u00b12.2e-4 0.745\u00b14.7e-4 MLP-P 0.661\u00b16.0e-3 0.861\u00b16.2e-4 0.473\u00b11.1e-3 3.042\u00b11.0e-2 0.871\u00b11.1e-3 0.812\u00b11.7e-3 0.725\u00b16.2e-4 5.508\u00b13.1e-2 0.924\u00b15.4e-5 0.973\u00b13.0e-4 0.745\u00b12.1e-4 MLP-PL 0.671\u00b16.2e-3 0.860\u00b11.2e-3 0.456\u00b11.3e-3 3.065\u00b18.1e-3 0.872\u00b16.3e-4 0.825\u00b14.1e-4 0.730\u00b13.5e-4 5.216\u00b12.0e-2 0.924\u00b11.2e-4 0.974\u00b11.9e-4 0.744\u00b12.1e-4 MLP-PLR 0.700\u00b12.1e-3 0.858\u00b11.6e-3 0.453\u00b15.8e-4 2.975\u00b16.6e-3 0.874\u00b19.0e-4 0.830\u00b12.4e-3 0.734\u00b13.5e-4 5.388\u00b11.6e-2 0.924\u00b15.4e-5 0.975\u00b14.8e-4 0.743\u00b11.0e-4 MLP-PLRLR 0.699\u00b19.3e-3 0.867\u00b11.8e-3 0.448\u00b18.3e-4 2.993\u00b16.5e-3 0.873\u00b14.1e-4 0.823\u00b18.3e-4 0.729\u00b19.1e-4 5.346\u00b14.8e-2 0.924\u00b12.6e-4 0.972\u00b18.2e-4 0.743\u00b19.9e-5 MLP-AutoDis 0.676\u00b17.6e-3 0.860\u00b11.7e-3 0.464\u00b11.6e-3 3.132\u00b15.7e-3 0.860\u00b12.8e-4 0.817\u00b12.1e-3 0.730\u00b12.5e-4 5.580\u00b12.2e-2 0.924\u00b11.1e-4 0.970\u00b13.2e-MLP-DICE 0.636\u00b12.6e-3 0.859\u00b12.0e-3 0.486\u00b11.4e-3 3.092\u00b11.3e-2 0.862\u00b14.8e-4 0.784\u00b12.3e-3 0.723\u00b16.1e-4 5.615\u00b18.9e-3 0.920\u00b12.0e-4 0.969\u00b11.4e-4 0.746\u00b12.0e-4",
+                "num": null
+            },
+            "TABREF0": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>GE CH</td><td>CA</td><td>HO</td><td>AD</td><td>OT</td><td>HI</td><td>FB</td><td>SA</td><td>CO</td><td>MI</td></tr><tr><td colspan=\"10\">#objects #num. features 32 9873 10000 20640 22784 48842 61878 98049 197080 200000 581012 1200192 10 8 16 6 93 28 50 200 54 136 #cat. features 0 1 0 0 8 0 0 1 0 0 0 metric Acc. Acc. RMSE RMSE Acc. Acc. Acc. RMSE Acc. Acc. RMSE #classes 5 2 --2 9 2 -2 7 -majority class 29% 79% --76% 26% 52% -89% 48% -</td></tr></table>",
+                "html": null,
+                "text": "Dataset properties. \"RMSE\" denotes root-mean-square error, \"Acc.\" denotes accuracy."
+            },
+            "TABREF1": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>Name</td><td>Embedding function (fi)</td></tr></table>",
+                "html": null,
+                "text": "Embedding names. See subsection 4.3"
+            },
+            "TABREF2": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>MLP MLP-Q MLP-T MLP-Q-LR MLP-T-LR</td><td>0.632 0.856 0.495 3.204 0.854 0.818 0.720 5.686 0.912 0.964 0.747 0.653 0.854 0.464 3.163 0.859 0.816 0.721 5.766 0.922 0.968 0.750 0.647 0.861 0.447 3.149 0.864 0.821 0.720 5.577 0.923 0.967 0.749 0.646 0.857 0.455 3.184 0.863 0.811 0.720 5.394 0.923 0.969 0.747 0.640 0.861 0.439 3.207 0.868 0.818 0.724 5.508 0.924 0.968 0.747</td></tr><tr><td colspan=\"2\">Transformer-L Transformer-Q-L 0.659 0.856 0.451 3.319 0.867 0.812 0.729 5.741 0.924 0.973 0.747 0.632 0.860 0.465 3.239 0.858 0.817 0.725 5.602 0.924 0.971 0.746 Transformer-T-L 0.663 0.861 0.454 3.197 0.871 0.817 0.726 5.803 0.924 0.974 0.747 Transformer-Q-LR 0.659 0.857 0.448 3.270 0.867 0.812 0.723 5.683 0.923 0.972 0.748 Transformer-T-LR 0.665 0.860 0.442 3.219 0.870 0.818 0.729 5.699 0.924 0.973 0.747</td></tr><tr><td colspan=\"2\">4.6 Periodic activation functions</td></tr></table>",
+                "html": null,
+                "text": "Results for MLP and Transformer with embedding modules based on the piecewise linear encoding (subsection 3.2). Notation follows Table3and Table2. The best results are defined separately for the MLP and Transformer backbones."
+            },
+            "TABREF3": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>MLP MLP-P MLP-PL MLP-PLR</td><td>0.632 0.856 0.495 3.204 0.854 0.818 0.720 5.686 0.912 0.964 0.747 0.631 0.860 0.489 3.129 0.869 0.807 0.723 5.845 0.923 0.968 0.747 0.641 0.859 0.467 3.113 0.868 0.819 0.727 5.530 0.924 0.969 0.746 0.674 0.857 0.467 3.050 0.870 0.819 0.728 5.525 0.924 0.970 0.746</td></tr><tr><td colspan=\"2\">Transformer-L Transformer-PLR 0.646 0.863 0.464 3.162 0.870 0.814 0.730 5.760 0.924 0.972 0.746 0.632 0.860 0.465 3.239 0.858 0.817 0.725 5.602 0.924 0.971 0.746</td></tr></table>",
+                "html": null,
+                "text": "Results for MLP and Transformer with embedding modules based on periodic activations (subsection 3.3). Notation follows Table3and Table2. The best results are defined separately for the MLP and Transformer backbones."
+            },
+            "TABREF4": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>GE</td><td>CH</td><td>CA</td><td>HO</td><td>AD</td><td>OT</td><td>HI</td><td>FB</td><td>SA</td><td>CO</td><td>MI</td></tr><tr><td colspan=\"11\">MLP MLP-LR \u00d72.52 \u00d71931.03 \u00d725.05 \u00d71.28 \u00d70.35 \u00d712.53 \u00d768.16 \u00d74.76 \u00d71.58 \u00d70.72 \u00d715.79 2.0M 1.5K 43.5K 3.6M 5.3M 479.9K 25.8K 937.3K 5.8M 3.2M 276.5K MLP-T \u00d71.58 \u00d714.13 \u00d77.97 \u00d70.43 \u00d70.04 \u00d72.27 \u00d75.85 \u00d70.47 \u00d70.59 \u00d70.74 \u00d73.85 MLP-T-LR \u00d71.61 \u00d7463.55 \u00d76.80 \u00d70.23 \u00d70.16 \u00d72.52 \u00d7113.22 \u00d73.43 \u00d70.41 \u00d70.35 \u00d78.47 MLP-PLR \u00d71.73 \u00d7250.24 \u00d712.94 \u00d71.07 \u00d70.66 \u00d78.05 \u00d7110.57 \u00d74.93 \u00d70.64 \u00d70.44 \u00d79.57</td></tr></table>",
+                "html": null,
+                "text": "Parameter counts for MLP with different embedding modules. All the models are tuned and the corresponding backbones are not identical in their sizes, so we take into account the fact that different approaches require a different number of parameters to realize their full potential."
+            },
+            "TABREF5": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>MLP-Q (piecewise linear) 0.653 0.854 0.464 3.163 0.859 0.816 0.721 5.766 MLP-Q (binary) 0.652 0.815 0.462 3.200 0.860 0.810 0.720 5.748 MLP-Q (one-blob) 0.613 0.851 0.461 3.187 0.857 0.808 0.719 5.645</td></tr><tr><td>MLP-T (piecewise linear) 0.647 0.861 0.447 3.149 0.864 0.821 0.720 5.577 MLP-T (binary) 0.639 0.855 0.464 3.163 0.869 0.813 0.718 5.572 MLP-T (one-blob) 0.622 0.858 0.464 3.158 0.870 0.809 0.724 5.475</td></tr></table>",
+                "html": null,
+                "text": "Comparing piecewise linear encoding (PLE) with the two variations described in subsection 5.2. Notation follows Table3and Table2."
+            },
+            "TABREF6": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>MLP (none) MLP (standard) 0.629 0.855 0.509 3.303 0.855 0.721 5.919 0.912 0.963 0.754 0.565 0.796 1.118 5.328 0.808 0.707 13.125 0.911 0.948 0.844 MLP (quantile) 0.632 0.856 0.495 3.204 0.854 0.720 5.686 0.912 0.964 0.747</td></tr><tr><td>MLP-Q (none) MLP-Q (quantile) 0.653 0.854 0.464 3.163 0.859 0.721 5.766 0.922 0.968 0.750 0.654 0.851 0.463 3.162 0.860 0.721 5.889 0.922 0.968 0.754</td></tr><tr><td>MLP-T (none) MLP-T (quantile) 0.647 0.861 0.447 3.149 0.864 0.720 5.577 0.923 0.967 0.749 0.644 0.860 0.447 3.175 0.865 0.721 5.598 0.923 0.968 0.749</td></tr></table>",
+                "html": null,
+                "text": "Results for MLP and MLP with PLE for different types of data preprocessing. Solutions using PLE are significantly less sensitive to data preprocessing. Notation follows Table3and Table2."
+            },
+            "TABREF7": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td colspan=\"2\">XGBoost XGBoost with Periodic 0.441 3.184 0.724 0.436 3.160 0.724</td></tr><tr><td>MLP MLP-PL</td><td>0.495 3.204 0.720 0.467 3.113 0.727</td></tr></table>",
+                "html": null,
+                "text": "The comparison of the effects of Periodic-based modules for XGBoost and MLP CA \u2193 HO \u2193 HI \u2191"
+            },
+            "TABREF8": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>Abbr</td><td>Name</td><td colspan=\"2\"># Train # Validation # Test # Num # Cat Task type Batch size</td></tr><tr><td colspan=\"3\">GE CH CA HO AD OT HI FB SA Santander Customer Transactions 128000 Gesture Phase 6318 Churn Modelling 6400 California Housing 13209 House 16H 14581 Adult 26048 Otto Group Products 39601 Higgs Small 62751 Facebook Comments Volume 157638 CO Covertype 371847 MI MSLR-WEB10K (Fold 1) 723412 235259 241521 136 1580 1975 32 1600 2000 10 3303 4128 8 3646 4557 16 6513 16281 6 9901 12376 93 15688 19610 28 19722 19720 50 32000 40000 200 92962 116203 54</td><td>0 Multiclass 1 Binclass 0 Regression 0 Regression 8 Binclass 0 Multiclass 0 Binclass 1 Regression 0 Binclass 0 Multiclass 0 Regression</td><td>128 128 256 256 256 512 512 512 1024 1024 1024</td></tr></table>",
+                "html": null,
+                "text": "Details on datasets, used for experiments"
+            },
+            "TABREF9": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>Parameter</td><td>Distribution</td></tr><tr><td>Max depth</td><td>UniformInt[1, 10]</td></tr><tr><td>Learning rate</td><td>LogUniform[0.001, 1]</td></tr><tr><td>Bagging temperature</td><td>Uniform[0, 1]</td></tr><tr><td>L2 leaf reg</td><td>LogUniform[1, 10]</td></tr><tr><td colspan=\"2\">Leaf estimation iterations UniformInt[1, 10]</td></tr><tr><td># Iterations</td><td>100</td></tr><tr><td>E.4 XGBoost</td><td/></tr></table>",
+                "html": null,
+                "text": "CatBoost hyperparameter space"
+            },
+            "TABREF10": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>Parameter</td><td>Distribution</td></tr><tr><td>Max depth</td><td>UniformInt[3, 10]</td></tr><tr><td>Min child weight</td><td>LogUniform[0.0001, 100]</td></tr><tr><td>Subsample</td><td>Uniform[0.5, 1]</td></tr><tr><td>Learning rate</td><td>LogUniform[0.001, 1]</td></tr><tr><td colspan=\"2\">Col sample by tree Uniform[0.5, 1]</td></tr><tr><td>Gamma</td><td>{0, LogUniform[0.001, 100]}</td></tr><tr><td>Lambda</td><td>{0, LogUniform[0.1, 10]}</td></tr><tr><td># Iterations</td><td>100</td></tr><tr><td>E.5 MLP</td><td/></tr></table>",
+                "html": null,
+                "text": "XGBoost hyperparameter space."
+            },
+            "TABREF11": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>Parameter</td><td>Distribution</td></tr><tr><td># Layers</td><td>UniformInt[1, 16]</td></tr><tr><td>Layer size</td><td>UniformInt[1, 1024]</td></tr><tr><td>Dropout</td><td>{0, Uniform[0, 0.5]}</td></tr><tr><td colspan=\"2\">Learning rate LogUniform[5e-5, 0.005]</td></tr><tr><td colspan=\"2\">Weight decay {0, LogUniform[1e-6, 1e-3]}</td></tr><tr><td># Iterations</td><td>100</td></tr><tr><td>E.6 ResNet</td><td/></tr></table>",
+                "html": null,
+                "text": "MLP hyperparameter space."
+            },
+            "TABREF12": {
+                "type_str": "table",
+                "num": null,
+                "content": "<table><tr><td>Parameter</td><td>Distribution</td></tr><tr><td># Layers</td><td>UniformInt[1, 8]</td></tr><tr><td>Layer size</td><td>UniformInt[32, 512]</td></tr><tr><td>Hidden factor</td><td>Uniform[1, 4]</td></tr><tr><td>Hidden dropout</td><td>Uniform[0, 0.5]</td></tr><tr><td colspan=\"2\">Residual dropout {0, Uniform[0, 0.5]}</td></tr><tr><td>Learning rate</td><td>LogUniform[5e-5, 0.005]</td></tr><tr><td>Weight decay</td><td>{0, LogUniform[1e-6, 1e-3]}</td></tr><tr><td># Iterations</td><td>100</td></tr></table>",
+                "html": null,
+                "text": "ResNet hyperparameter space."
+            }
+        }
+    }
+}

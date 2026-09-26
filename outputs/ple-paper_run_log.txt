@@ -1,0 +1,3002 @@
+Piecewise-Linear-Encoder
+------- Preprocess -------
+[SAVED] ../examples/ple-paper_cleaned.json
+------- PaperCoder -------
+[Planning] Overall plan
+============================================
+Below is a comprehensive roadmap outlining how to reproduce the method described in “On Embeddings for Numerical Features in Tabular Deep Learning.” This plan details both the methodology and the experimental pipeline (datasets, preprocessing, architectures, training, hyperparameter tuning, evaluation, and ablations) so that later you can implement the code with confidence.
+
+────────────────────────────
+1. OVERVIEW & OBJECTIVES
+
+• Goal: Implement a family of embedding modules that transform scalar (numerical) features into high-dimensional representations in order to improve tabular deep learning models.  
+• Main ideas to implement:
+  – An embedding “framework” where each numerical feature is embedded independently.
+  – Two main embedding families:
+   • Piecewise Linear Encoding (PLE): using binning methods (unsupervised quantile‐based or supervised target-aware) and then a linear fusion to produce the final embedding.
+   • Periodic activation based modules: where the scalar is transformed using periodic functions with trainable parameters.
+• Additionally, also implement baseline (conventional) differentiable embedding modules (e.g., a bias-free linear layer, linear plus ReLU, or “LRLR” alternatives) to compare against the new methods.
+• Integrate these embeddings into several backbone architectures (MLP, ResNet, and Transformer) and compare their performance against Gradient Boosted Decision Trees (GBDT) benchmarks (e.g., CatBoost/XGBoost).
+
+────────────────────────────
+2. METHODOLOGY IMPLEMENTATION DETAILS
+
+A. General Embedding Framework
+  • For each numerical feature, design an embedding function f₍ᵢ₎(x). Each feature is processed separately (no mixing during embedding) before joining them in the main model.
+  • In MLP-like architectures, concatenate all embedded vectors to create a flat input vector.
+  • For Transformer-based backbones, pass each feature’s embedding as a separate “token” and (if needed) follow with an additional linear layer to encode feature indices.
+  • The framework should allow plugging in different embedding “modules” for each numerical feature.
+
+B. Implementing Piecewise Linear Encoding (PLE)
+  1. Binning Strategies:
+   a. Unsupervised (Quantile-based):
+    – For each feature, compute empirical quantiles from the training data.
+    – Remove bins with zero width.
+   b. Supervised (Target-aware):
+    – For each feature, perform a recursive greedy split (similar in spirit to the C4.5 discretization algorithm). Essentially, build a one-feature decision tree using the target value to decide splits.
+    – Use the leaf intervals as bins.
+  2. PLE Encoding Computation:
+   – For each feature value x, given T bins with boundaries b₀, b₁, …, b_T, compute a T-dimensional vector as follows:
+    • For bins where x is completely below the bin’s left threshold, output 1 (or reflect that the bin is “activated”).
+    • For the bin where x lies between bₜ₋₁ and bₜ, compute the linear interpolation: (x – bₜ₋₁)/(bₜ – bₜ₋₁).
+    • For bins above x’s current bin, output 0.
+  3. Post-processing with trainable parameters:
+   – Each feature’s PLE vector is then fed through one “final” linear layer: f₍ᵢ₎(x) = v₀ + Σₜ eₜ · vₜ, where eₜ are the PLE outputs and v₀, vₜ are trainable embedding parameters.
+   – This has the interpretation of “fusing” the indicator/interpolated bins with separate trainable embeddings per bin.
+  4. Implementation considerations:
+   – Make design choices parameterized (e.g., number of bins T – to be tuned on a validation set).
+   – Allow switching between quantile-based and target-aware binning.
+
+C. Implementing Periodic Activation Embeddings
+  1. Framework:
+   – For each numerical feature, apply a periodic transformation. Although the paper’s Equation 2 is only briefly described, the idea is to have trainable “pre-activation” coefficients that, after being modulated (for instance, using sin() or another periodic function), produce the embedding.
+  2. Key details:
+   – Introduce trainable parameters cᵢ (initially drawn from N(0, σ); σ is a hyperparameter to tune) and a multiplier (k) that is either per feature (or shared) and also tuned.
+   – After applying the periodic activation, as with PLE, consider coupling this module with an additional linear layer (e.g., “PLR” variant) to improve performance.
+  3. Implementation considerations:
+   – The choice of periodic function (sinusoidal, cosine, etc.) and how to combine with a linear map should be made consistent with the description in the paper and the modifications reported (i.e., “Periodical with linear component” has shown best efficacy).
+   – Since details are a bit brief, note that this part may require checking original references (such as Li et al. [25]) or clarifying the exact formulation before final implementation.
+
+D. Baseline (Conventional) Differentiable Embedding Modules
+  – For comparison, implement “vanilla” approaches that use simple linear layers and ReLU or leaky ReLU.
+  – For example, a “LR” module is just a single linear (bias-free) layer mapping the scalar value to a high-dimensional space.
+  – Also consider sequential modules like “LRLR” (multiple layers) as discussed in the paper, while noting that added complexity might lead to extra computational cost.
+
+E. Backbone Architectures
+  1. MLP:
+   – Implement a standard MLP for tabular data (e.g., 4 fully connected layers, each with 256 units as used in synthetic experiments).
+   – Concatenate the outputs of all feature embedding modules as the input.
+ 2. ResNet:
+   – Implement a ResNet-like model for tabular data with skip connections. Use similar dimensions and dropout settings as in the original paper.
+ 3. Transformer:
+   – Adapt an attention-based architecture (e.g., FT-Transformer) that takes the feature embeddings as separate tokens without mixing them ahead of time.
+   – Include a simple linear layer after the embedding stage if needed to add feature-index information.
+   – Use hyperparameter distributions (e.g., number of layers, embedding sizes as in Table 17 of the paper) to guide tuning.
+
+────────────────────────────
+3. EXPERIMENTAL PIPELINE
+
+A. Datasets & Data Preprocessing
+  1. Datasets:
+   – Reproduce experiments on the 11 public datasets described in the paper (e.g., Adult, California Housing, Otto Group Product Classification, Churn Modeling, Facebook Comments, Covertype, etc.).
+   – For the synthetic “GBDT-friendly” dataset:
+    • Generate 10,000 samples with 8 features sampled ~ N(0,1).
+    • Produce the target using an ensemble of 16 randomly constructed decision trees (depth 6).
+  2. Data Splits:
+   – Split datasets into training, validation, and test sets as described in the paper.
+   – Use the provided guidelines (see “Notation” in the paper): training for optimization, validation for early stopping/tuning, and test for final evaluation.
+  3. Preprocessing:
+   – For numerical features, apply a quantile transformation (using Scikit-learn’s quantile transformer) for all models except when embedding with PLE, since PLE representations (values in [0, 1]) are shift–scale invariant.
+   – For categorical features, use one-hot encoding (unless using CatBoost’s built-in support).
+   – Also include experiments where the model is trained with “vanilla” preprocessing versus no preprocessing to evaluate the robustness of PLE.
+   – Record the batch size for each dataset (use values reported in Appendix C or as provided by typical Kaggle examples).
+
+B. Training Process and Protocols
+  1. Optimization:
+   – Use the AdamW optimizer.
+   – Loss functions: cross-entropy for classification tasks; Mean Squared Error (MSE) for regression.
+  2. Training Strategy:
+   – Use early stopping based on validation loss/metric with patience = 16 epochs.
+   – Do not use a learning rate schedule.
+   – For each tuned configuration, run 15 different random seeds to report mean and standard deviation.
+  3. Hyperparameter Tuning:
+   – Use Optuna (or a similar Bayesian optimization library) with the Tree-Structured Parzen Estimator algorithm.
+   – Search spaces to tune:
+    • Output dimension of linear embedding layers (e.g., UniformInt[1,128]).
+    • For Quantile-based PLE: number of bins ∼ UniformInt[2, 256].
+    • For Target-aware PLE: the maximum number of leaves ∼ UniformInt[2, 256], minimum number of items per leaf ∼ UniformInt[1, 128], and the minimum information gain ∼ LogUniform[1e–9, 0.01].
+    • For the Periodic module: number of groups (typically 1 per feature), hyperparameters k (e.g., UniformInt[1,128]) and σ (standard deviation for initialization).
+    • For backbone models: number of layers, layer sizes, dropout rates, learning rate (e.g., LogUniform between 1e–5 and 1e–3 or as provided in Table 17 for Transformer).
+   – Use the same hyperparameter tuning procedure for all embedding variants to guarantee a fair comparison.
+  4. Ensembles:
+   – As in the paper, after training 15 models per configuration, split them into 3 ensembles (e.g., groups of 5 models) and average their predictions.
+   – Report both single-run and ensemble metrics.
+
+C. Evaluation Metrics
+  – For classification tasks: report accuracy.
+  – For regression tasks: report Root Mean Squared Error (RMSE).
+  – Report mean and standard deviation across 15 seeds.
+  – When comparing results (e.g., in tables), consider not only the mean performance but also the variability (standard deviation) as described in the paper.
+  – Also measure the number of parameters (model size) to compare overhead introduced by the new embeddings.
+
+D. Additional Ablation Studies and Comparisons
+  1. Compare different embedding modules (standard linear, LR, LRLR, PLE variants [quantile-based, target-aware], periodic variants, and even additional alternatives like one–blob encoding as described in subsection 5.2).
+  2. Perform experiments that test the sensitivity of deep models to preprocessing – e.g., compare vanilla MLP (which is highly sensitive without proper scaling) versus MLP with PLE.
+  3. Evaluate “DL vs GBDT”:
+   – Run baseline GBDT models (CatBoost, XGBoost) with the appropriate hyperparameters.
+   – Compare rankings as in Table 6.
+  4. Replicate the synthetic “GBDT-friendly” experiment:
+   – Vary the number of bins for the quantile-based PLE and plot RMSE as in Figure 5.
+  5. Record parameter counts and training times to assess overhead.
+
+────────────────────────────
+4. ORGANIZATION & IMPLEMENTATION ROADMAP
+
+A. Repository Structure
+  – data/ : Data loading scripts, dataset preprocessing routines.
+  – embeddings/ : Modules for each embedding type:
+   • ple.py: Code for piecewise linear encoding (with both quantile-based and target-aware binning options).
+   • periodic.py: Code for periodic activation modules.
+   • baseline.py: Conventional differentiable embedding modules.
+  – models/ : Code for backbone architectures (MLP, ResNet, Transformer) and integration logic that accepts embedded features.
+  – training/ : Training loop(s), hyperparameter tuning routines (integrated with Optuna), ensemble procedures, logging, and evaluation scripts.
+  – experiments/ : Scripts to run ablation studies, generate plots (e.g., RMSE vs. number of bins), and compare against GBDT.
+  – utils/ : Utility functions (e.g., data splitting, metric computation, parameter counting).
+
+B. Logging & Reproducibility
+  – Set random seeds properly across all components.
+  – Save hyperparameter configurations, training logs, and evaluation metrics.
+  – Document the training time, hardware used, and experiments configuration details.
+
+C. Documentation
+  – Write clear README and code documentation detailing how each module is organized and how to add further experiments.
+  – Provide comments that explain where the implementation follows the paper’s equations (e.g., Equation 1 for PLE and Equation 2 for periodic modules).
+
+────────────────────────────
+5. AMBIGUITIES AND POINTS REQUIRING CLARIFICATION
+
+• The exact mathematical formulation of the periodic activation module (Equation 2) is only briefly described. Before finalizing the code, verify:
+  – The precise periodic function to use (sin vs. cosine or a variant),
+  – The order of operations (whether mixing occurs before or after applying periodic functions),
+  – How the trainable coefficient cᵢ is integrated and what dimensions the parameters should have.
+• The fusion step for attention-based models (adding a linear layer post-embedding to encode feature indices) should be implemented as described; verify that parameters are not shared across features.
+• Some hyperparameter ranges (e.g., the specific distribution for σ in the periodic module) might need fine-tuning in your own experiments. Use the provided distributions (e.g., UniformInt[1,128] for k, LogUniform for minimum information gain) as a starting point.
+
+────────────────────────────
+6. SUMMARY
+
+This roadmap provides:
+  – A detailed breakdown of the embedding methods (PLE and periodic) along with baseline modules.
+  – Step-by-step guidelines for data ingestion, preprocessing, and splitting.
+  – A clear training and evaluation protocol with hyperparameter tuning and ensemble averaging.
+  – A plan for comparing multiple backbones and benchmarking against GBDT.
+  – An organized repository structure and logging/documentation recommendations.
+
+By following this roadmap closely, you should be able to produce a codebase that faithfully reproduces the experiments and methodologies described in the paper. Once you have this plan in place, you can begin writing modular Python code for each component, gradually integrating and testing the different parts with representative datasets.
+
+Happy coding and good luck reproducing the experiments!
+============================================
+
+🌟 Usage Summary 🌟
+[Planning] Overall plan
+🛠️ Model: o3-mini
+📥 Input tokens: 114 (Cost: $0.00012540)
+📦 Cached input tokens: 23040 (Cost: $0.01267200)
+📤 Output tokens: 5858 (Cost: $0.02577520)
+💵 Current total cost: $0.03857260
+🪙 Accumulated total cost so far: $0.03857260
+============================================
+
+[Planning] Architecture design
+============================================
+[CONTENT]
+{
+    "Implementation approach": "We will implement the system in Python using PyTorch for modeling and training, Scikit-learn for data preprocessing and dataset splitting, and Optuna for hyperparameter tuning. The system is structured into modular components: a dataset loader to handle data reading and preprocessing (including quantile transformation and one-hot encoding for categorical data), embedding modules (implementing both Piecewise Linear Encoding and Periodic Activation functions), backbone models (MLP, ResNet, and Transformer variants), a trainer to manage the training loop with early stopping and logging, and an evaluation module to compute metrics such as accuracy and RMSE on validation and test sets. The design emphasizes clear APIs and a simple file structure, making effective use of open-source libraries.",
+    "File list": [
+        "main.py",
+        "config.py",
+        "dataset_loader.py",
+        "model.py",
+        "trainer.py",
+        "evaluation.py",
+        "utils.py"
+    ],
+    "Data structures and interfaces": "classDiagram\n    class MainApp {\n        +__init__(config: dict) \n        +run_experiment() -> None\n    }\n    class Config {\n        +load_config() -> dict\n    }\n    class DatasetLoader {\n        +__init__(config: dict)\n        +load_data() -> DataBundle\n    }\n    class DataBundle {\n        +train: Any\n        +val: Any\n        +test: Any\n    }\n    class EmbeddingModule {\n        <<abstract>>\n        +forward(x: Tensor) -> Tensor\n    }\n    class PLEEmbedding {\n        +__init__(bins: int, method: str)  \n        +forward(x: Tensor) -> Tensor\n    }\n    class PeriodicEmbedding {\n        +__init__(k: int, sigma: float)\n        +forward(x: Tensor) -> Tensor\n    }\n    class BackboneModel {\n        +__init__(embeddings: List[EmbeddingModule], params: dict)\n        +forward(x: Tensor) -> Tensor\n    }\n    class Trainer {\n        +__init__(model: BackboneModel, data: DataBundle, config: dict)\n        +train() -> None\n        +save_model() -> None\n    }\n    class Evaluator {\n        +__init__(model: BackboneModel, data: DataBundle)\n        +evaluate() -> dict\n    }\n    MainApp --> DatasetLoader\n    MainApp --> Trainer\n    MainApp --> Evaluator\n    Trainer --> BackboneModel\n    BackboneModel --> EmbeddingModule\n    PLEEmbedding --|> EmbeddingModule\n    PeriodicEmbedding --|> EmbeddingModule",
+    "Program call flow": "sequenceDiagram\n    participant M as MainApp\n    participant C as Config\n    participant DL as DatasetLoader\n    participant DB as DataBundle\n    participant BM as BackboneModel\n    participant EM as EmbeddingModule\n    participant TR as Trainer\n    participant EV as Evaluator\n\n    M->>C: load_config()\n    C-->>M: return config dict\n    M->>DL: new DatasetLoader(config)\n    DL->>DL: load and preprocess data\n    DL-->>M: return DataBundle {train, val, test}\n    M->>BM: initialize BackboneModel(embeddings, model_params)\n    BM->>EM: initialize each embedding module (PLEEmbedding / PeriodicEmbedding)\n    M->>TR: new Trainer(BM, DataBundle, config)\n    TR->>BM: call model.forward(x) during training loop\n    BM-->>TR: return predictions\n    TR->>TR: compute loss (MSE or CrossEntropy) using predictions & targets\n    TR->>TR: update model with AdamW optimizer\n    TR->>TR: implement early stopping (patience=16 epochs)\n    TR-->>M: training complete\n    M->>EV: new Evaluator(BM, DataBundle)\n    EV->>BM: call model.forward(x) on validation/test splits\n    BM-->>EV: return predictions\n    EV->>M: return evaluation metrics (accuracy, RMSE, parameter count)\n    M->>M: optionally ensemble predictions from multiple runs\n    M-->>Console: print final results and logs",
+    "Anything UNCLEAR": "Clarification is needed on the exact mathematical formulation of the periodic activation embedding (e.g., specific periodic function and parameter shapes) and how feature mixing is managed before/after applying the periodic functions. Additionally, details on the expected dataset formats (especially for the various public datasets mentioned) and any specialized hyperparameter settings for backbones (MLP, ResNet, Transformer) need confirmation from the experimental appendix."
+}
+[/CONTENT]
+============================================
+
+🌟 Usage Summary 🌟
+[Planning] Architecture design
+🛠️ Model: o3-mini
+📥 Input tokens: 3910 (Cost: $0.00430100)
+📦 Cached input tokens: 23040 (Cost: $0.01267200)
+📤 Output tokens: 1857 (Cost: $0.00817080)
+💵 Current total cost: $0.02514380
+🪙 Accumulated total cost so far: $0.06371640
+============================================
+
+[Planning] Logic design
+============================================
+[CONTENT]
+{
+    "Required packages": [
+        "numpy==1.21.0",
+        "torch==1.9.0",
+        "scikit-learn==0.24.0",
+        "pandas==1.3.0",
+        "optuna==2.7.0"
+    ],
+    "Required Other language third-party packages": [
+        "No third-party dependencies required"
+    ],
+    "Logic Analysis": [
+        [
+            "config.py",
+            "Defines configuration parameters, hyperparameter search spaces, and experiment settings. Loads settings from a YAML or JSON file. All modules (dataset loader, model, trainer, evaluation) import configuration values from this file to maintain consistency."
+        ],
+        [
+            "dataset_loader.py",
+            "Contains the DatasetLoader class and DataBundle data structure. Responsible for reading datasets using pandas, applying preprocessing (scaling/quantile transformation for numerical features, one-hot encoding for categorical features), and splitting data into training, validation, and test sets using scikit-learn functions. This module forms the base for supplying data to the model."
+        ],
+        [
+            "model.py",
+            "Defines the model architecture. Contains:\n  - An abstract EmbeddingModule class that specifies the 'forward' method for any embedding.\n  - PLEEmbedding class implementing piecewise linear encoding using either quantile-based or target-aware binning.\n  - PeriodicEmbedding class implementing periodic activation functions with trainable parameters.\n  - BackboneModel class integrating the embedding modules with various backbones (MLP, ResNet, Transformer). Uses PyTorch for model building and depends on the utilities provided in config.py and utils.py."
+        ],
+        [
+            "utils.py",
+            "Provides common utility functions such as seed setting for reproducibility, metric calculations (accuracy, RMSE), logging configuration, and parameter counting functions. These utilities are shared among dataset_loader.py and trainer.py."
+        ],
+        [
+            "trainer.py",
+            "Implements the Trainer class which encapsulates the training loop. This includes handling of the forward pass, loss computation (MSE for regression or cross-entropy for classification), optimization using AdamW, early stopping (with a patience threshold), and model checkpointing. Optionally integrates hyperparameter tuning using Optuna. Imports the BackboneModel from model.py and data from dataset_loader.py."
+        ],
+        [
+            "evaluation.py",
+            "Defines the Evaluator class that loads a trained model and computes evaluation metrics (accuracy, RMSE) on the validation and test splits. Responsible for aggregating ensemble predictions if multiple runs are executed, and summarizing performance metrics. Depends on model.py and dataset_loader.py."
+        ],
+        [
+            "main.py",
+            "Acts as the entry point of the application. It orchestrates the experiment by loading configuration from config.py, initializing the DatasetLoader to get the DataBundle, constructing the model (with the selected embedding modules and backbone) via model.py, invoking the Trainer to perform training, and finally running the Evaluator to report performance. Responsible for overall control flow and logging of experimental results."
+        ]
+    ],
+    "Task list": [
+        "config.py",
+        "dataset_loader.py",
+        "model.py",
+        "utils.py",
+        "trainer.py",
+        "evaluation.py",
+        "main.py"
+    ],
+    "Full API spec": "",
+    "Shared Knowledge": "Shared configurations, utility functions, and data structures (like DataBundle) across modules are defined in config.py and utils.py. Consistent use of preprocessing steps, random seed management, and metric calculations must be ensured in both trainer.py and dataset_loader.py. The system is built around common PyTorch practices and uses scikit-learn for preprocessing and dataset splitting.",
+    "Anything UNCLEAR": "Clarification is needed on the exact mathematical formulation of the periodic activation module (e.g., specific periodic function, parameter dimensions, and integration point for the trainable coefficient). Also, details regarding the specialized hyperparameter settings for different backbone models (MLP, ResNet, Transformer) and the expected dataset file formats require further confirmation."
+}
+[/CONTENT]
+============================================
+
+🌟 Usage Summary 🌟
+[Planning] Logic design
+🛠️ Model: o3-mini
+📥 Input tokens: 1764 (Cost: $0.00194040)
+📦 Cached input tokens: 26880 (Cost: $0.01478400)
+📤 Output tokens: 2392 (Cost: $0.01052480)
+💵 Current total cost: $0.02724920
+🪙 Accumulated total cost so far: $0.09096560
+============================================
+
+[Planning] Configuration file generation
+============================================
+## Code: config.yaml
+```yaml
+## config.yaml
+training:
+  optimizer: "AdamW"  # Using AdamW optimizer as specified in the paper.
+  learning_rate_range: [5e-05, 0.005]  # MLP hyperparameter search range from LogUniform[5e-5, 0.005].
+  batch_size: 128  # Default batch size; actual values may be dataset-specific.
+  max_epochs: 100  # Number of epochs/iterations as used in the experiments.
+  early_stopping_patience: 16  # Patience value for early stopping (patience + 1 epochs with no improvement).
+
+seed: 42  # Random seed for reproducibility.
+
+data_preprocessing:
+  numerical:
+    transformer: "QuantileTransformer"  # Quantile transformation applied as per paper (except for some exceptions).
+    apply_preprocessing: true
+  categorical:
+    encoding: "one-hot"  # One-hot encoding used for categorical features.
+
+embeddings:
+  ple:
+    method: "quantile"  # Options: 'quantile' (unsupervised) or 'target_aware' (supervised) binning.
+    quantile_bins_range: [2, 256]  # UniformInt[2,256] for quantile-based PLE.
+    target_aware:
+      max_leaves_range: [2, 256]  # For tree-based (C4.5 discretization) binning.
+      min_items_per_leaf_range: [1, 128]
+      min_info_gain_range: [1e-09, 0.01]  # LogUniform between 1e-9 and 0.01.
+  periodic:
+    k_range: [1, 128]  # UniformInt for the number of groups/features in the periodic module.
+    sigma: 0.1  # Default sigma value; σ is important and tuned using validation sets.
+
+backbone:
+  mlp:
+    num_layers: 4  # As used in the synthetic experiment.
+    layer_size: 256  # Each layer has 256 units.
+  resnet:
+    num_layers: 4  # Placeholder; follows similar structure as MLP.
+    layer_size: 256
+  transformer:
+    num_layers: 2  # Using a reduced number of layers for FT-Transformer variant.
+    embedding_size_range: [96, 512]  # As indicated in the Transformer hyperparameter search space.
+
+hyperparameter_tuning:
+  use_optuna: true  # Employ Optuna for hyperparameter tuning.
+  trials: 50  # Number of optimization trials.
+
+evaluation:
+  num_seeds: 15  # Number of independent runs for each configuration.
+  ensemble_groups: 3  # Split 15 runs into 3 ensembles for averaging.
+  metrics:
+    classification: "accuracy"
+    regression: "RMSE"
+```
+============================================
+
+🌟 Usage Summary 🌟
+[Planning] Configuration file generation
+🛠️ Model: o3-mini
+📥 Input tokens: 1118 (Cost: $0.00122980)
+📦 Cached input tokens: 28544 (Cost: $0.01569920)
+📤 Output tokens: 3176 (Cost: $0.01397440)
+💵 Current total cost: $0.03090340
+🪙 Accumulated total cost so far: $0.12186900
+============================================
+
+  0%|          | 0/7 [00:00<?, ?it/s] 14%|█▍        | 1/7 [00:20<02:05, 20.90s/it][ANALYSIS] config.py
+============================================
+Below is the logic analysis for the configuration module (config.py). This file serves as the single source‐of‐truth for all experiment settings and hyperparameter search spaces so that every component of the pipeline (data loading, model construction, training, and evaluation) can import consistent values. The analysis below is written in the style and with comments that would be included at the top and throughout config.py.
+
+------------------------------------------------------------
+# config.py – Logic Analysis and High-Level Implementation Plan
+
+"""
+Purpose:
+--------
+This module is responsible for loading, validating, and providing access to all configuration parameters that are used throughout the experimental pipeline. It ensures that every module (DatasetLoader, Model, Trainer, Evaluator, etc.) uses the same settings for reproducibility and consistency.
+
+Key Responsibilities:
+---------------------
+1. Load configuration settings from an external YAML file (or JSON file if needed). The default file is config.yaml.
+2. Validate that all required sections are present:
+   • training
+   • seed
+   • data_preprocessing
+   • embeddings
+   • backbone
+   • hyperparameter_tuning
+   • evaluation
+
+3. Provide a uniform API (e.g., via a function like load_config()) that returns a Python dictionary with the configuration values.
+4. Centralize definitions of hyperparameter search spaces (e.g., learning_rate_range in training, quantile_bins_range for PLE in embeddings, k_range and sigma for periodic embeddings) so that other modules (like trainer.py using Optuna) can directly refer to them.
+5. Set defaults as needed (for example, if a key is missing, provide an informative error message).
+6. Ensure reproducibility by making the random seed (seed: 42 in this case) available for any module that needs to set PyTorch, NumPy, or Python’s built‐in random seed.
+7. Document within this file the mapping between the configuration keys and the experimental components. For instance:
+   - "training" keys (optimizer type, learning rate range, batch size, max_epochs, early_stopping_patience) will be referenced by the Trainer class to configure the optimizer (AdamW), the early stopping logic, and the learning rate search space.
+   - "data_preprocessing" keys determine which scikit-learn transformer to use (in our case, QuantileTransformer for numerical data) as well as the encoding method for categorical features (one-hot encoding).
+   - "embeddings" section defines sub-configurations for PLE and periodic modules:
+          • For PLE: the method (quantile or target_aware), the range for the number of bins (UniformInt range [2,256]), and (if using supervised binning) additional settings like max_leaves_range, min_items_per_leaf_range, and min_info_gain_range.
+          • For the periodic module: the k_range (UniformInt [1,128]) and the default sigma value (0.1), which will later be used to initialize trainable coefficients drawn from N(0, sigma).
+   - "backbone" holds model architecture settings for MLP, ResNet, and Transformer such as number of layers, layer sizes, and (for the Transformer) the embedding size range.
+   - "hyperparameter_tuning" indicates whether to use Optuna (true/false) and sets the number of trials (e.g., 50) for searching in the defined search spaces.
+   - "evaluation" specifies the number of seeds (15) for independent runs, the number of ensemble groups (3), and the metrics (accuracy for classification, RMSE for regression) that are later used by the Evaluator module.
+
+Implementation Details:
+-----------------------
+• Use a YAML parser (for example, the PyYAML library) to load the contents of config.yaml.
+• Check for the existence of the file and, if missing, raise a FileNotFoundError with an informative message.
+• After loading the YAML file, verify that all the expected keys are present – iterate over a predefined list of required keys and alert the user if any are missing.
+• The load_config() function should return a Python dictionary. Other modules (dataset_loader.py, model.py, trainer.py, evaluation.py) will import or call this function to obtain their configuration values.
+• The configuration parameters for continuous hyperparameter tuning (such as learning_rate_range, quantile_bins_range, and others) will be later used in the hyperparameter search via Optuna. The ranges defined in the configuration are specified exactly as described in the provided config.yaml.
+• A comment (or TODO note) should be added to clarify that while most parameters come straight from config.yaml, the exact mathematical details of the periodic activation module (e.g., the choice of sin/cos, the dimensions of the trainable coefficient cᵢ, etc.) were subject to further clarification. This note ensures that future developers or researchers can revisit these details if further experimental evidence or a paper clarification is available.
+• For reproducibility, the “seed” from the configuration is also made available, and it will be used immediately at startup by components needing to set random seeds.
+• The file organization and design deliberately keep this module independent so that any changes to experiment settings can be made in a single place, reducing the risk of inconsistencies across the codebase.
+
+Example Outline within config.py:
+----------------------------------
+# 1. Import necessary libraries (e.g., yaml, os)
+# 2. Define a function load_config(config_file='config.yaml')
+#     a. Check for file existence.
+#     b. Use yaml.safe_load() to load the file.
+#     c. Validate that all required sections are present.
+# 3. (Optional) Provide helper functions to get specific subsections (e.g., get_training_config()).
+# 4. Possibly set global constants like CONFIG = load_config() so that other modules can import CONFIG directly.
+# 5. Document inside the file the mapping between config keys and experiment components for clarity.
+# 6. Include inline comments that reference the values from the paper – for example, note that batch_size=128, max_epochs=100, early_stopping_patience=16 are taken straight from the experimental setup description.
+
+Final Notes:
+------------
+• This module must not “invent” any configuration values; it solely relies on the values provided in config.yaml.
+• All modules in the system – dataset_loader.py, model.py, trainer.py, evaluation.py, and main.py – must import these configuration values to ensure consistency.
+• The configuration structure reflects the experimental pipeline described in the paper, including details for the embedding modules (PLE and periodic), backbone architectures, and training protocols.
+• In case further clarity is needed regarding the periodic activation’s parameters (such as the exact function to use), a comment or a TODO note should be included right next to the relevant configuration entries.
+
+By following this logic analysis, the config.py module will provide a clear, centralized, and reproducible configuration interface that aligns completely with the methodology, experiment design, and reproducibility goals set out in the paper "On Embeddings for Numerical Features in Tabular Deep Learning."
+------------------------------------------------------------
+
+This analysis ensures that you have a blueprint for writing config.py that meets the requirements—centralizing all hyperparameters, settings, and design choices into one file that is used consistently by all components of the codebase.
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] config.py
+🛠️ Model: o3-mini
+📥 Input tokens: 6410 (Cost: $0.00705100)
+📦 Cached input tokens: 22400 (Cost: $0.01232000)
+📤 Output tokens: 3291 (Cost: $0.01448040)
+💵 Current total cost: $0.03385140
+🪙 Accumulated total cost so far: $0.15572040
+============================================
+
+[ANALYSIS] dataset_loader.py
+============================================
+ 29%|██▊       | 2/7 [00:45<01:56, 23.24s/it]Below is a detailed logic analysis for the dataset_loader.py module. This module’s primary responsibility is to read in the raw dataset (using pandas), apply all necessary preprocessing (for both numerical and categorical features), and then split the data into training, validation, and test sets. The following points outline in depth how we plan to implement this in accordance with the paper’s methodology, the overall plan, the design’s data structures/interfaces, and the configuration provided in config.yaml.
+
+────────────────────────────────────────────
+1. Overall Responsibilities
+
+• Read the dataset (assumed to be in CSV or a similar format) using pandas.
+• Identify numerical and categorical features. (If the config specifies or if types can be inferred automatically.)
+• Preprocess features:
+  – For numerical features: If the config flag “apply_preprocessing” is true and the transformer is set to “QuantileTransformer,” then apply scikit-learn’s QuantileTransformer. This not only scales but also maps data to a target distribution (typically uniform in [0, 1]). Note that while PLE embeddings are shift–scale invariant, the config currently enforces the transformer unless further logic is added later.
+  – For categorical features: Apply one-hot encoding—using either pandas’ get_dummies or scikit-learn’s OneHotEncoder—to convert these features into a binary indicator format.
+• Split the dataset into three disjoint sets: training, validation, and test. This will be done using scikit-learn’s train_test_split (possibly in two stages) to ensure reproducibility
+  – Use the “seed” value from the configuration (e.g., 42) to set random_state in the splitting functions.
+  – Choose appropriate split ratios (e.g., 70% train, 15% validation, 15% test) unless specific ratios are provided.
+• Package the three splits into a DataBundle data structure that contains attributes for train, val, and test.
+
+────────────────────────────────────────────
+2. Class Structure and DataFlow
+
+A. DataBundle
+ • A simple data container (class DataBundle) that holds:
+  – train data (features and labels)
+  – validation data (features and labels)
+  – test data (features and labels)
+ • This structure is returned from the load_data() method of DatasetLoader and is passed along to downstream modules (Trainer and Evaluator).
+
+B. DatasetLoader Class
+ • __init__(self, config: dict)
+  – The constructor will take in a configuration dictionary (loaded by config.py) that includes:
+   ◦ data_preprocessing parameters:
+    ▪ numerical.transformer (should be “QuantileTransformer” per config.yaml)
+    ▪ apply_preprocessing flag
+    ▪ categorical.encoding (set to “one-hot”)
+   – Possibly the dataset’s file path, or other dataset-specific settings if provided by the config.
+ • load_data(self) -> DataBundle
+  – This is the primary method to:
+   1. Load the dataset from disk (using pandas.read_csv or a similar function).
+   2. Separate features (X) from the target/label (y). The target column might be specified in the config or inferred automatically.
+   3. Detect or determine which columns are numerical and which are categorical:
+    ◦ For numerical features: these will later be sent through scaling (QuantileTransformer) if preprocessing is enabled.
+    ◦ For categorical features: apply one-hot encoding.
+   4. Preprocessing Steps:
+    – If config["data_preprocessing"]["apply_preprocessing"] is true:
+     ○ For numerical features:
+      § Instantiate a QuantileTransformer from scikit-learn (using the default parameters or any parameters defined in the config).
+      § Fit the transformer on the training portion of the data (to avoid data leakage) and transform all splits consistently.
+    – For categorical features:
+     ○ Apply one-hot encoding (e.g., via pandas.get_dummies or a OneHotEncoder), ensuring that the same transformation is applied to training, validation, and test sets.
+   5. Data Splitting:
+    – Use scikit-learn’s train_test_split in a two-step process:
+     ○ First, split the full dataset into a “train” set and a “temp” set (where temp is later split into validation and test).
+     ○ Then split the “temp” set into validation and test sets (for example, using an equal split or any prescribed ratio).
+    – Ensure that the random_state parameter is set to the value in the configuration seed (e.g., 42) to ensure reproducibility.
+    – If the task is classification, consider stratifying based on the target labels.
+   6. Package the resulting splits into a DataBundle instance and return it.
+
+────────────────────────────────────────────
+3. Key Points and Decision Details
+
+• Preprocessing:
+ – Numerical: The config explicitly states “QuantileTransformer” under data_preprocessing.numerical so the QuantileTransformer from scikit-learn will be instantiated and applied. (Remember that while PLE representations are naturally in [0, 1], for consistency across models we will apply the QuantileTransformer as per config. Future extensions may allow conditionally skipping this step.)
+ – Categorical: Since the config indicates one-hot encoding, use a standard one-hot implementation. The choice between pandas.get_dummies or scikit-learn’s OneHotEncoder is flexible but should remain consistent across runs.
+
+• Data Splitting:
+ – Implement a two-stage split to first carve out a training set and then subdivide the remaining data into validation and test sets.
+ – The exact ratios might be hardcoded (for instance, 70/15/15) in the absence of explicit configuration, but this should be documented.
+ – Use the provided “seed” from config.yaml to ensure that the randomness is controlled.
+
+• Handling Dataset Formats:
+ – Although the paper mentions several public datasets, this module should be kept generic. The DatasetLoader might rely on a configuration parameter (or additional arguments) that specify the filename or the columns that represent numerical or categorical data.
+ – If such metadata is not provided, the loader can infer data types from the pandas DataFrame (for example, using DataFrame.select_dtypes).
+
+• Error Handling and Logging:
+ – Include basic checks (e.g., file exists, non-empty data, proper separation of features and labels).
+ – Log dataset dimensions both before and after preprocessing and splitting to help troubleshoot issues.
+ – If a column contains unexpected values (e.g., missing values), the module should either handle them (through imputation) or raise an informative exception.
+
+• Reproducibility:
+ – Use the random_state parameter in all functions that incorporate randomness (e.g., train_test_split).
+ – While global seed setting might occur in a utility module, ensure that dataset splitting respects the provided config seed.
+
+────────────────────────────────────────────
+4. Summary of the Data Flow
+
+1. The DatasetLoader is instantiated with the config dictionary.
+2. Inside load_data():
+ – The raw dataset is read using pandas.
+ – The features (X) and label (y) are separated.
+ – Columns are split into numerical and categorical features.
+ – Numerical features are transformed via QuantileTransformer (if apply_preprocessing is true).
+ – Categorical features are encoded using one-hot encoding.
+ – The full data is split into training, validation, and test sets in a reproducible fashion using the config seed.
+3. A DataBundle instance is constructed holding the three splits and returned.
+4. This DataBundle is then used by training and evaluation modules downstream.
+
+────────────────────────────────────────────
+5. Integration Considerations
+
+• The module should strictly use the configuration values from config.yaml (e.g., batch_size is not used here directly but the seed and preprocessing type are crucial).
+• The design does not change any interfaces: the DataBundle is a plain data container, and the DatasetLoader only returns this object via its load_data method.
+• Any utility functions (such as for logging or additional preprocessing) should be placed in utils.py and imported here for code clarity.
+
+By following this detailed logic, the dataset_loader.py module can be implemented to reliably feed preprocessed, well-split data into our training pipeline, ensuring that the experimental setup aligns with both the paper’s methodology and our overall design.
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] dataset_loader.py
+🛠️ Model: o3-mini
+📥 Input tokens: 164 (Cost: $0.00018040)
+📦 Cached input tokens: 28672 (Cost: $0.01576960)
+📤 Output tokens: 4407 (Cost: $0.01939080)
+💵 Current total cost: $0.03534080
+🪙 Accumulated total cost so far: $0.19106120
+============================================
+
+[ANALYSIS] model.py
+============================================
+ 43%|████▎     | 3/7 [01:31<02:13, 33.44s/it] 57%|█████▋    | 4/7 [01:44<01:16, 25.57s/it]Below is a detailed logic analysis for the file model.py. This file is responsible for defining the overall model architecture––including the abstract embedding interface, the two specialized embedding modules (PLE and Periodic), and a backbone model that integrates one or more embeddings with a selected deep network (MLP, ResNet, or Transformer). The analysis below makes explicit reference to design choices, paper equations, and the settings given in config.yaml.
+
+────────────────────────────
+1. OVERALL STRUCTURE
+
+• The file will import PyTorch (torch and torch.nn) and any necessary utilities from config.py and utils.py.
+• Four main classes will be defined:
+  – EmbeddingModule (an abstract base class)
+  – PLEEmbedding (for piecewise linear encoding)
+  – PeriodicEmbedding (for periodic activation-based encoding)
+  – BackboneModel (which combines per-feature embeddings with a backbone network)
+
+Each class will be implemented as a subclass of torch.nn.Module so that it integrates seamlessly into the PyTorch training and evaluation loops.
+
+────────────────────────────
+2. EMBEDDING MODULE INTERFACE
+
+• Class: EmbeddingModule  
+  – Role: Serve as the abstract base class for any numerical feature embedding.
+  – Method: forward(x: Tensor) → Tensor  
+  • x is expected to be a tensor representing the scalar value(s) for a single feature.
+  • Subclasses must implement the forward method.
+
+Implementation Note:
+ – Use Python’s abstract base class (ABC) or simply raise NotImplementedError in the forward method to enforce that every subclass defines its own forward pass.
+
+────────────────────────────
+3. PLEEmbedding CLASS (Piecewise Linear Encoding)
+
+• Purpose: Implement the piecewise linear encoding (PLE) as described in the paper. For each numerical feature, the idea is to “bin” the scalar value using predetermined boundaries and then produce a T-dimensional vector using binary indicator and linear interpolation rules.
+  
+Core Details:
+ a. __init__(self, bins: int, method: str, embedding_dim: int, boundaries: Optional[Tensor] = None)  
+  – bins: Number of bins (T). This value is tuned using the quantile_bins_range provided in config.yaml.
+  – method: String to select the binning strategy. For example, "quantile" or "target_aware". (Here the config “embeddings: ple: method” is used.)
+  – embedding_dim: The desired dimension of the final embedding.
+  – boundaries: (Optional) A tensor containing the bin boundaries. In practice, these boundaries should be computed from the training data (quantiles for unsupervised or from a one-feature decision tree for target-aware binning). If not provided, there must be a mechanism (or later a setter) to compute or set them.
+ b. Internal Components:
+  – Register the boundaries as a non‐trainable buffer (if provided) so that they move with the model.
+  – Create a final linear layer (e.g., torch.nn.Linear) with input dimension equal to the number of bins and output dimension equal to embedding_dim. This layer implements the “fusion” step described by the paper’s equation:
+    f_i(x) = v₀ + Σₜ eₜ · vₜ.
+  – The linear layer essentially multiplies the PLE vector (of dimension T) by a weight matrix and adds a bias.
+ c. Forward Pass:
+  – Input x is a tensor with shape (batch_size, 1) containing raw scalar values.
+  – For each scalar value:
+   1. The module compares x to the stored boundaries. For each bin:
+    • If the right boundary of the bin is lower than x, set that component to 1.
+    • If x falls into the current bin [bₜ₋₁, bₜ), compute the fractional value as (x − bₜ₋₁)/(bₜ − bₜ₋₁).
+    • Otherwise, leave it as 0.
+  – (This operation is vectorized over the batch.)  
+  – After computing the T-dimensional PLE vector e, pass it through the linear fusion layer to obtain the final embedding.
+ d. Return Value:
+  – The output is a tensor of shape (batch_size, embedding_dim).
+
+Clarification:
+ Because the precise handling of extreme cases (when x < b₀ or x ≥ b_T) is detailed in the paper’s text, make sure to cover the cases (for example, by “clipping” or using indicator masks). The design assumes that once the bins (and their boundaries) are computed externally, the PLEEmbedding is entirely deterministic for a given input.
+
+────────────────────────────
+4. PERIODIC EMBEDDING CLASS
+
+• Purpose: Implement an embedding based on periodic activations as described in the paper. Although the paper’s Equation 2 is brief, the main idea is to transform the input scalar via a periodic function (e.g., sine wave) with learnable pre-activation coefficients.
+
+Core Details:
+ a. __init__(self, k: int, sigma: float, embedding_dim: int)  
+  – k: Determines the “number of groups” or output dimension of the sinusoidal transformation. Its range is tuned via the config’s k_range.
+  – sigma: The standard deviation for initialization of the trainable phase offset(s) c. The config sets sigma (for instance, sigma: 0.1).
+  – embedding_dim: The desired output dimension after an optional linear transformation.
+ b. Internal Components:
+  – Create a trainable parameter c (of shape (k,)) that is initialized from a normal distribution with standard deviation sigma.
+  – Define a fixed frequency vector; this could be a constant tensor (for instance, using torch.linspace or even a vector of ones). (The design should note that the exact choice of periodic function (sin, cosine) and the frequency matrix is subject to clarification. Here we choose sine as the periodic function.)
+  – As with PLEEmbedding, include a final linear layer after the sine transformation (i.e., a “PLR” module) so that the periodic embedding is “fused” into the desired output dimension.
+ c. Forward Pass:
+  – The input x is of shape (batch_size, 1).
+  – Expand x to align with the frequency vector (for example multiplying x with the frequency tensor so that the result has shape (batch_size, k)).
+  – Add the trainable offsets c.
+  – Apply the sin() function elementwise to obtain a tensor of shape (batch_size, k).
+  – Pass this tensor through the linear layer, so the final output has shape (batch_size, embedding_dim).
+ d. Return Value:
+  – The output is the transformed and fused embedding.
+ e. Clarifications/Assumptions:
+  – The exact periodic transformation (e.g., whether to use sine only or combine sine and cosine) may need further fine tuning. For now, we follow the paper’s lead and implement a simple sine function.
+  – The frequency component (multiplication factor for x) is chosen as a fixed vector and is not trained. Future extensions could allow training of the frequencies if needed.
+
+────────────────────────────
+5. BACKBONE MODEL CLASS
+
+• Purpose: Integrate a collection of (per-feature) embedding modules with a chosen deep model backbone (MLP, ResNet, Transformer). This class coordinates the embedding of numerical features and processes the embedded representations using the backbone.
+
+Core Details:
+ a. __init__(self, embeddings: List[EmbeddingModule], params: dict)  
+  – embeddings: A list of EmbeddingModule instances (each one handling one numerical feature). The design guarantees that each numerical feature is processed independently.
+  – params: A dictionary (typically loaded from config.yaml) including backbone parameters. For example, it contains keys for backbone type ("mlp", "resnet", "transformer"), number of layers, layer sizes, dropout rates, etc.
+ b. Backbone Subnetwork:
+  – For an MLP-like backbone:
+   • In the forward pass, apply each embedding module to its corresponding element of the input.
+   • Concatenate all the resulting embeddings (producing a flat vector for each example).
+   • Pass the concatenated vector through a sequential network (e.g., four fully connected layers of size 256 as per config for synthetic experiments).
+  – For a ResNet-like backbone:
+   • Similarly, start by concatenating the individual feature embeddings.
+   • Process the concatenated embedding through a series of residual blocks (the detail of skip connections can be implemented using standard residual modules).
+  – For a Transformer-based backbone:
+   • Instead of concatenation, stack the per-feature embeddings to form a tensor of shape (batch_size, num_features, embedding_dim).
+   • Optionally apply a linear projection on each token (this extra layer “adds” the feature index information as described in the paper).
+   • Pass the token sequence through a Transformer encoder (number of layers and embedding sizes are taken from the config, e.g. embedding_size_range for Transformer).
+ c. Forward Pass:
+  – The input x is assumed to be a tensor of shape (batch_size, num_features) where each column corresponds to one numerical feature.
+  – For each feature i, call: embedding_i = embeddings[i](x[:, i].unsqueeze(1)). This ensures that each scalar from x is processed by its dedicated embedding module.
+  – Depending on the backbone type, either concatenate (for MLP/ResNet) or stack (for Transformer) the resulting embeddings.
+  – Pass the aggregated embedding through the backbone layers to output predictions.
+ d. Output:
+  – The final output is a tensor of predictions. (The final output size may be configured for classification or regression tasks; this decision is determined by additional parameters in params.)
+ e. Additional Notes:
+  – The design ensures that the embedding stage (which is central to the paper) is fully separated from the main backbone. This modularity allows for easy swapping of different embedding modules and backbones.
+  – Random seed management and initialization (from config.yaml and utils.py) should be applied to the network weights.
+  – Hyperparameter values such as the number of layers and layer sizes for each backbone are taken directly from params, which in turn are sourced from config.yaml and further hyperparameter tuning via Optuna.
+
+────────────────────────────
+6. INTERFACE & INTEGRATION CONSIDERATIONS
+
+• All classes use the parameters specified in config.yaml (for example, the “learning_rate_range” is used by the trainer, but backbone structure such as layer size [256] and number of layers [4] for MLP are explicitly set in the BackboneModel).
+• The EmbeddingModule implementations (both PLEEmbedding and PeriodicEmbedding) follow the interface exactly as defined in the design (including the forward(x: Tensor) method).
+• BackboneModel’s structure is designed to be flexible based on the chosen backbone type (MLP, ResNet, or Transformer).
+• Ensure that the models’ parameters and (if needed) any nontrainable buffers (like the bin boundaries in PLEEmbedding or fixed frequency vectors in PeriodicEmbedding) are correctly registered to support move-to-device (e.g., model.to(device)) and saving/loading checkpoints.
+
+────────────────────────────
+7. POINTS THAT REQUIRE CLARIFICATION
+
+• The exact mathematical formulation of the periodic activation function in PeriodicEmbedding:
+  – Which periodic function should be used (we choose sine, but cosine or a combination might be considered).
+  – The shape and initialization of the constant frequency parameter. For now, we assume a fixed vector (possibly created with torch.linspace) that is not trainable.
+  – How to best integrate the trainable coefficient c in shaping the final output.
+• For PLEEmbedding:
+  – Confirm the behavior at the extreme ends (x less than the minimum boundary and x greater than or equal to the maximum boundary).
+  – How to compute or inject the bin boundaries (likely computed externally during data preprocessing, then passed in as a tensor).
+• Special hyperparameter settings for the backbones (especially for Transformer) are to be taken from the configuration and hyperparameter tuning settings (e.g., Transformer’s embedding_size_range is [96, 512] as given).
+
+────────────────────────────
+8. SUMMARY
+
+The file model.py will therefore:
+ – Define a strict interface for feature embedding through EmbeddingModule.
+ – Implement PLEEmbedding that computes a T-dimensional piecewise linear representation from an input scalar—and then fuses it via a linear layer.
+ – Implement PeriodicEmbedding that applies a sinusoidal (with trainable offsets) transformation to the scalar and then fuses it via a linear layer.
+ – Implement BackboneModel to combine per-feature embeddings into a single input for a chosen backbone architecture, with distinct processing logic based on whether an MLP, ResNet, or Transformer is used.
+
+This logic analysis should be used when writing the code to ensure that the experimental design from the paper is faithfully reproduced and integrated in a clear, modular fashion as specified by the design and configuration files. 71%|███████▏  | 5/7 [02:01<00:44, 22.39s/it]
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] model.py
+🛠️ Model: o3-mini
+📥 Input tokens: 198 (Cost: $0.00021780)
+📦 Cached input tokens: 28672 (Cost: $0.01576960)
+📤 Output tokens: 9243 (Cost: $0.04066920)
+💵 Current total cost: $0.05665660
+🪙 Accumulated total cost so far: $0.24771780
+============================================
+
+[ANALYSIS] utils.py
+============================================
+Below is a detailed logic analysis for implementing the utilities module (utils.py). This file is expected to provide common helper functions that will be used by both the dataset loader and the trainer. The main responsibilities include setting seeds for reproducibility, computing evaluation metrics (accuracy and RMSE), configuring logging, and counting model parameters. The analysis below breaks down each functionality and explains the design decisions and necessary steps.
+
+────────────────────────────
+1. Reproducibility (Seed Setting)
+
+• Purpose:  
+  – Ensure that experiments are reproducible by setting a fixed random seed for all operations that depend on randomness.
+
+• Functionality:  
+  – Create a function (e.g., set_seed(seed: int)) that:
+   • Sets the random seed for Python’s built-in random module.
+   • Sets the seed for NumPy (numpy.random.seed).
+   • Sets the seed for PyTorch (torch.manual_seed) and, if available, torch.cuda.manual_seed_all.
+   • Configures torch.backends.cudnn to use deterministic algorithms (e.g., set torch.backends.cudnn.deterministic = True and torch.backends.cudnn.benchmark = False).
+
+• Reference:  
+  – The seed value should be loaded from the configuration file (config.yaml, where seed is set to 42).
+
+────────────────────────────
+2. Metric Calculations
+
+• Purpose:  
+  – Compute performance metrics used in both training and evaluation phases. The paper uses accuracy for classification and RMSE (root mean squared error) for regression tasks.
+
+• Functions to Implement:
+
+  a. Accuracy Calculation  
+   – Function (e.g., compute_accuracy(predictions, targets))  
+   – If the predictions come as raw scores (logits), the function should first determine the predicted labels (e.g., by applying argmax along the class dimension).  
+   – Compare the predicted labels to the true labels to compute the percentage of correctly classified items.
+
+  b. RMSE Calculation  
+   – Function (e.g., compute_rmse(predictions, targets))  
+   – Compute the mean squared error between predictions and ground truth, then take the square root.  
+   – Ensure the function supports tensor inputs without breaking the computational graph if needed, or convert to NumPy arrays when used solely for logging/evaluation.
+
+• Design Notes:  
+  – These functions should handle either torch.Tensor or NumPy arrays as inputs (depending on how the predictions are handled later in training/evaluation).  
+  – Consistency is crucial: when using these functions for logging or for hyperparameter evaluation, their outputs should match the experimental protocol described in the paper.
+
+────────────────────────────
+3. Logging Configuration
+
+• Purpose:  
+  – Provide a simple and consistent logging interface for the entire project. Logging is needed to output progress during training, debugging information, and experiment-level results.
+
+• Functionality:
+
+  – Implement a function (e.g., get_logger(name: str)) that:  
+   • Configures Python’s built-in logging module.  
+   • Sets up a logging format that includes timestamps, logging levels, and the message.  
+   • Optionally configures handlers: at least a StreamHandler (for console output) and maybe a FileHandler if persistence is desired.  
+   • Sets the logging level (INFO is a good default, but it might be configurable via the config file).
+
+• Integration:  
+  – This logger will be imported and used in dataset_loader.py, trainer.py, and possibly in main.py to print experiment progress and results.
+
+────────────────────────────
+4. Parameter Counting
+
+• Purpose:  
+  – Assess the overhead introduced by different embedding modules as well as the overall model size.  
+  – This is important for comparing against GBDT models as noted in the paper.
+
+• Functionality:
+  – Implement a function (e.g., count_parameters(model: torch.nn.Module)) that:  
+   • Iterates over all model parameters (using model.parameters()).  
+   • Sums up the total number of elements in each parameter that has requires_grad set to True.  
+   • Returns the total count as an integer or a formatted string.
+
+• Notes:  
+  – This utility should give a quick summary of “model size” for logging and experimental reporting.
+
+────────────────────────────
+5. Additional Utility Functions (Optional/Helpful)
+
+• Seed Setting Helper:  
+  – A wrapper function, e.g., seed_all(seed: int), that calls all necessary functions to cover Python, NumPy, and PyTorch.
+
+• Time/Date Functions (if needed):  
+  – Functions to format timestamps for filenames or log messages can be useful, although these are not strictly required by the design.
+
+• Metric Aggregation:  
+  – If ensemble metrics are needed (averaging over multiple runs), consider adding helper functions to aggregate lists of scores.
+
+────────────────────────────
+6. Integration and Consistency Considerations
+
+• All utility functions should be designed to work seamlessly with the rest of the system:
+  – They must be imported in both dataset_loader.py and trainer.py.
+  – Use the configuration values from config.yaml where appropriate (for example, the random seed).
+  – The metric functions must be consistent with the experimental protocol from the paper (accuracy for classification, RMSE for regression).
+
+• Keep the interface simple and well-documented, so that other modules (like Trainer and Evaluator) can easily use these functions without modification.
+
+────────────────────────────
+Summary
+
+The utils.py module is a central place for common helper functions. The functions should include:
+
+  • Seed setting (set_seed or seed_all)
+  • Metric calculations (compute_accuracy and compute_rmse)
+  • Logging configuration (get_logger and log initialization)
+  • A function to count and report model parameters (count_parameters)
+
+By implementing these functions in a clear and simple manner, we ensure that the experimental pipeline is reproducible, well-logged, and capable of providing consistent metrics—all of which are critical for reproducing the experiments described in the paper.
+
+This analysis provides the necessary clarity and structure for writing the code in utils.py, consistent with the design, plan, and configuration provided.
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] utils.py
+🛠️ Model: o3-mini
+📥 Input tokens: 262 (Cost: $0.00028820)
+📦 Cached input tokens: 28544 (Cost: $0.01569920)
+📤 Output tokens: 2672 (Cost: $0.01175680)
+💵 Current total cost: $0.02774420
+🪙 Accumulated total cost so far: $0.27546200
+============================================
+
+[ANALYSIS] trainer.py
+============================================
+Below is the detailed logic analysis for the Trainer class in trainer.py. This analysis explains how the Trainer class will encapsulate the training loop, perform loss computation, apply optimization (using AdamW as specified), implement early stopping, and manage model checkpointing—as well as briefly support hyperparameter tuning via Optuna. The logic strictly follows the paper’s methodology, the provided plan, design, and configuration (config.yaml).
+
+────────────────────────────
+1. Trainer Class Initialization
+
+• The Trainer constructor will take three main arguments:
+  – A BackboneModel instance (which already incorporates a list of embedding modules following the design)
+  – A DataBundle object (with train, validation, and test splits obtained from dataset_loader.py)
+  – A configuration dictionary read from config.yaml (or via config.py) containing key settings such as optimizer type ("AdamW"), learning rate ranges, batch_size, max_epochs, early_stopping_patience, random seed, as well as hyperparameter tuning flags.
+
+• In the __init__ method the Trainer will:
+  – Set the model and data attributes.
+  – Initialize the optimizer (AdamW) using model parameters and a learning rate (the chosen value should lie within the specified range [5e-05, 0.005]). If hyperparameter tuning via Optuna is enabled, the learning rate may be one of the tunable parameters.
+  – Determine the loss function based on the task type:
+   • For regression tasks (if evaluation.metric is “RMSE”), use MSE loss.
+   • For classification tasks (if evaluation.metric is “accuracy”), use CrossEntropyLoss (or another appropriate classification loss).
+  – Optionally, move the model to a designated device (GPU/CPU) using common PyTorch practices.
+  – Initialize any logging or checkpointing variables (for example, best_validation_metric, counter for early stopping, etc.).
+
+────────────────────────────
+2. Training Loop (train() Method)
+
+The core logic of the train() method is as follows:
+
+A. Epoch Loop:
+  – Iterate up to a maximum of max_epochs (e.g., 100 as per the configuration).
+  – For each epoch:
+   • Set the model into “train” mode.
+   • Initialize accumulators for tracking the average training loss.
+
+B. Batch Loop (within each epoch):
+  – Use the training data loader from the DataBundle (which could be implemented using PyTorch’s DataLoader) to iterate over mini-batches. Each batch will contain input features (already preprocessed) and targets.
+  – For each mini-batch:
+   • Zero out optimizer gradients.
+   • Perform a forward pass: call model.forward(x) on the batch input. The BackboneModel will internally pass each feature through its corresponding embedding module (such as a PLEEmbedding or a PeriodicEmbedding) before the embeddings are concatenated or processed according to the backbone (MLP, ResNet, or Transformer).
+   • Compute the loss:
+    – If the task is regression, compute MSE loss between predictions and targets.
+    – If the task is classification, compute cross-entropy loss.
+   • Backpropagate the loss (loss.backward()) and perform the optimizer step (optimizer.step()).
+   • Accumulate the training loss for logging.
+  – End of mini-batch loop.
+
+C. Validation Evaluation:
+  – After finishing an epoch, switch the model to “eval” mode.
+  – Compute prediction(s) on the validation set (using a separate validation data loader) without gradient updates.
+  – Evaluate the validation metric:
+   • For regression tasks: calculate RMSE (which is the square root of the mean squared error).
+   • For classification tasks: calculate accuracy.
+  – Optionally, if multiple metrics are tracked, compute each accordingly.
+
+D. Early Stopping and Checkpointing:
+  – Compare the current validation metric with the best previously observed value. Note the following:
+   • For regression, a lower RMSE is better.
+   • For classification, a higher accuracy is better.
+  – If the current epoch shows improvement (i.e., lower RMSE for regression OR higher accuracy for classification):
+   • Update the “best” metric.
+   • Save (checkpoint) the current model state (using torch.save(model.state_dict(), ...) or a similar method) and reset the early stopping counter.
+  – Otherwise, increment the early stopping counter.
+  – If the counter exceeds the early_stopping_patience (16 epochs, as defined), then break the training loop early.
+
+────────────────────────────
+3. Integration with Hyperparameter Tuning (Optuna)
+
+• If hyperparameter tuning is enabled (use_optuna flag set to true in the config):
+  – The Trainer should be designed so that after training, it returns a key performance metric (validation loss or validation accuracy) for the current trial.
+  – During each trial, Optuna will adjust hyperparameters (learning rate, number of bins for PLE, k in periodic embeddings, etc.) by instantiating a new Trainer with new configuration values.
+  – Ensure that the Trainer reports the best value found to the Optuna objective function. (This is optional but follows the paper’s recommendations for using consistent tuning procedures.)
+
+────────────────────────────
+4. Logging and Reproducibility Considerations
+
+• At the beginning of the Trainer’s __init__, set the random seed (using the seed from config.yaml) to ensure reproducibility across training runs.
+• Maintain log messages for:
+  – Epoch number, training loss, and validation metric.
+  – Updates when a new “best” model is found, along with a reset of the early stopping counter.
+• Optionally, track training time per epoch and overall training time.
+
+────────────────────────────
+5. Checkpointing and Saving the Model
+
+• The Trainer class must implement a save_model() method to persist the best checkpoint model.
+  – This method will typically be called after early stopping is triggered or training has completed.
+  – The model checkpoint file can then be loaded later by the Evaluator in evaluation.py for reporting test metrics.
+• Ensure that the saved model includes not only the model state dictionary but also any additional data necessary for reproducibility (e.g., optimizer state might be saved in some contexts but is not strictly required for evaluation).
+
+────────────────────────────
+6. Summary of Trainer.py Logic Flow
+
+1. Load configuration settings and set random seed.
+2. Initialize the Trainer with:
+  – the BackboneModel (including separate embedding modules),
+  – the DataBundle containing train, validation, and test sets,
+  – configuration parameters (optimizer type, learning rate range, batch_size, max_epochs, early_stopping_patience, etc.).
+3. In the training loop (for each epoch):
+  a. Set the model to training mode.
+  b. For each mini-batch of the training data:
+   – Zero gradients.
+   – Perform a forward pass through the model.
+   – Compute the appropriate loss (MSE for regression or CrossEntropy for classification).
+   – Backpropagate and update the model parameters using AdamW.
+  c. After the epoch, evaluate the model on the validation set.
+  d. Check improvement against the best recorded validation metric.
+  e. If improved, save the model checkpoint and reset the early stopping counter; if not, increase the counter.
+  f. If the counter exceeds patience (16 epochs with no improvement), terminate training.
+4. Optionally, if using Optuna hyperparameter tuning, return the achieved validation metric for the current trial.
+5. Allow saving the final (or best) model checkpoint so that evaluation.py can load and use it for test evaluation.
+
+By following this logic, the Trainer will robustly implement the training and early stopping protocol described in the paper and ensure that all experiments (including ensemble runs and hyperparameter tuning experiments) are executed consistently and reproducibly using settings from the config.yaml.
+
+This analysis directly aligns with the experimental design, the paper’s guidelines on training (e.g., using AdamW, no learning rate schedule, early stopping with patience 16), and the overall implementation plan. 86%|████████▌ | 6/7 [02:25<00:22, 22.73s/it]
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] trainer.py
+🛠️ Model: o3-mini
+📥 Input tokens: 170 (Cost: $0.00018700)
+📦 Cached input tokens: 28672 (Cost: $0.01576960)
+📤 Output tokens: 3017 (Cost: $0.01327480)
+💵 Current total cost: $0.02923140
+🪙 Accumulated total cost so far: $0.30469340
+============================================
+
+[ANALYSIS] evaluation.py
+============================================
+Below is a detailed logic analysis for evaluation.py. This document outlines how the Evaluator class should work, what inputs it will receive (a trained model or multiple trained models for ensemble evaluation and a DataBundle from the dataset loader), and how it will compute and aggregate performance metrics based on the experimental protocols described in the paper. Use this analysis as a blueprint for writing the actual code.
+
+────────────────────────────
+1. Overall Responsibility of Evaluator
+
+• The Evaluator class’s main role is to:
+  – Load one or more trained (backbone) models.
+  – Compute evaluation metrics on the validation and test splits of the data.
+  – Aggregate ensemble predictions if evaluation involves multiple runs.
+  – Report summary metrics such as accuracy (for classification) or RMSE (for regression) along with the model’s parameter count.
+  – Work in “evaluation mode” (i.e. with torch.no_grad() and model.eval()) so that gradients are not computed.
+  – Depend on the DataBundle (containing train, validation, and test sets) provided by the DatasetLoader.
+  – Rely on configuration settings (from config.yaml via config.py and the loaded config dictionary) for details such as:
+   • Which metric to compute (accuracy for classification, RMSE for regression).
+   • Number of ensemble groups (the plan says 15 runs should be split into three groups).
+   • Batch size values and other evaluation-related parameters.
+
+────────────────────────────
+2. Inputs / Initialization
+
+• The Evaluator class’s __init__() method should accept:
+  – model(s): either a single BackboneModel or a list (e.g. 15 models representing different random seeds).
+  – data: a DataBundle object that contains already preprocessed splits for validation and test.
+  – config: a configuration dictionary (derived from config.py, which in turn reads config.yaml) that provides details including evaluation metrics, the number of seeds, ensemble group count, etc.
+
+• The configuration will supply:
+  – evaluation.metrics (with keys “classification” and “regression”).
+  – evaluation.num_seeds (e.g. 15) and ensemble_groups (e.g. 3), so that if multiple models are provided the Evaluator knows how to group and average predictions.
+
+────────────────────────────
+3. Evaluation Procedure (evaluate() Method)
+
+A. Setup and Mode
+
+ 1. Before evaluating, set the model(s) to evaluation mode by calling model.eval() or, if you have multiple models, set each one with eval().
+ 2. Wrap evaluation in a torch.no_grad() context to avoid computing gradients and to improve speed.
+
+B. Data Loop
+
+ 1. For each split (validation and test) in the DataBundle:
+   a. Loop over the data in batches (using the provided or default batch size from config).
+   b. For each batch:
+    – Get the input features (numerical and categorical after preprocessing).
+    – Pass inputs through the model (or each model if using an ensemble) by calling model.forward(x).
+    – Collect both the raw outputs (logits or regression predictions) and the true labels.
+
+C. Metric Computation
+
+ 1. Determine if the task is classification or regression. This can either be inferred from the config (e.g., compare config.evaluation.metrics value) or by examining the dimensionality/type of the target.
+ 2. For classification:
+   – For each model’s output, convert logits to probabilities using a softmax (if the network output has not already been converted to probabilities).
+   – If using an ensemble (multiple models), aggregate predictions by averaging the softmax probabilities for each sample.
+   – Final predictions are obtained by taking argmax over the averaged probabilities.
+   – Compute accuracy by comparing predicted labels with the true labels.
+ 3. For regression:
+   – For each model’s output, simply obtain the scalar prediction for each sample.
+   – If evaluating several models as an ensemble, average the predictions across models on a per‑sample basis.
+   – Compute RMSE as the square root of the mean squared error between predicted and true values.
+
+D. Ensemble Aggregation (if Multiple Models Provided)
+
+ 1. If a list of models is given (e.g. 15 individual models):
+   – Use the configuration value “ensemble_groups” (e.g. 3) to split the list into disjoint groups (for instance, grouping every 5 models together).
+   – For each ensemble group:
+    a. For every data batch, run the forward pass with each model in the group.
+    b. Average the predictions from the 5 models on a per-sample basis.
+    c. Compute the corresponding metric (accuracy for classification; RMSE for regression) for that group.
+ 2. Aggregate the group metrics (for example, by computing the average metric across the 3 groups) to arrive at a final ensemble performance measure.
+ 3. Optionally, also compute and report the standard deviation across these ensemble groups, as the paper emphasizes both mean performance and variability.
+
+E. Parameter Count
+
+ 1. Compute the total number of trainable parameters in the (backbone) model. This is useful for comparing overhead introduced by embedding modules.
+ 2. Even in ensemble evaluation (with multiple runs), the parameter count can be reported based on one representative model since each run has the same architecture.
+
+────────────────────────────
+4. Output Format
+
+• The evaluate() method should return a Python dictionary containing summary metrics for the evaluated split(s). For example, the dictionary might have keys such as:
+  – "validation": { "accuracy" or "RMSE": value, "parameter_count": value }
+  – "test": { "accuracy" or "RMSE": value, "parameter_count": value }
+  – If ensemble evaluation is done, additional keys might include metrics for each ensemble group as well as the overall average and standard deviation.
+
+• The Evaluator should also print or log these results so that the MainApp (or the calling script) can present the final performance.
+
+────────────────────────────
+5. Dependencies and Integration
+
+• The Evaluator should import necessary parts from model.py (e.g., the BackboneModel and any methods needed for applying forward pass to embedding modules) and dataset_loader.py (DataBundle structure).
+• It should also use utility functions (from utils.py) for:
+  – Setting random seeds (if needed, although that may be performed earlier in the pipeline).
+  – Calculating metrics (you may define helper functions such as compute_accuracy() and compute_rmse() to cleanly separate metric logic).
+  – Parameter counting (e.g., summing model.parameters()’ numel() for p in model.parameters() if p.requires_grad).
+
+────────────────────────────
+6. Considerations Specific to the Paper and Implementation Design
+
+• The evaluation method must strictly adhere to the protocols described in the paper:
+  – Use the same batch sizes (as provided in the config or dataset-specific overrides).
+  – Report both mean performance and standard deviation (across different random seeds or ensemble groups).
+  – For classification tasks, ensure that the averaging of predictions is done over softmax outputs, not just logits.
+  – For regression tasks, ensure that the averaging is done on scalar predictions.
+• While the design calls for the Evaluator to be “responsible for aggregating ensemble predictions,” keep the API simple by letting the __init__ accept either a single model or a list of models. Then, based on the data type (or a flag in config), decide whether to run single-model evaluation or grouped ensemble averaging.
+• Always reference configuration values from the config (e.g., early_stopping_patience, evaluation.num_seeds, evaluation.ensemble_groups) to remain consistent and reproducible.
+
+────────────────────────────
+7. Summary of the Evaluation Logic
+
+• Initialize Evaluator with a model (or list of models), a DataBundle (with train/val/test splits), and the config.
+• In evaluate():
+  – Set the model(s) to eval mode and disable gradients.
+  – For each of the validation and test splits:
+   o Loop over data batches and run the forward pass.
+   o For classification: apply softmax, average predictions (if ensemble), compute argmax, and then accuracy.
+   o For regression: average predictions (ensemble if applicable), then compute RMSE.
+  – Use helper functions from utils.py as needed.
+  – Compute and include model parameter count in the output.
+  – If evaluating ensembles, group models based on the provided number of ensemble groups (e.g., 3 groups of 5 each) and calculate both group-level and overall averaged metrics.
+• Return and log a dictionary summarizing these metrics.
+
+By following this logic analysis closely in evaluation.py, you'll ensure that the evaluation procedures are clear, consistent with the paper’s methodology, and integrated with the rest of the modular codebase.
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] evaluation.py
+🛠️ Model: o3-mini
+📥 Input tokens: 148 (Cost: $0.00016280)
+📦 Cached input tokens: 28672 (Cost: $0.01576960)
+📤 Output tokens: 4790 (Cost: $0.02107600)
+💵 Current total cost: $0.03700840
+🪙 Accumulated total cost so far: $0.34170180
+============================================
+
+[ANALYSIS] main.py
+============================================
+100%|██████████| 7/7 [02:39<00:00, 19.95s/it]100%|██████████| 7/7 [02:39<00:00, 22.75s/it]
+Below is a detailed logic analysis for main.py. This file serves as the entry point of the application and is responsible for orchestrating the entire experimental pipeline. The analysis is organized step‐by‐step, showing how main.py will use the configuration (from config.yaml via config.py), load and preprocess the data (via DatasetLoader), construct the model (including embedding modules and backbone) from model.py, run training (using Trainer), and finally evaluate the results (using Evaluator). This outline ensures that every part of the plan and design is followed while maintaining consistency with the paper’s methodology and our design guidelines.
+
+────────────────────────────
+1. Initialization and Configuration Loading
+
+• main.py begins by importing the Config class from config.py and calling its load_config() method.  
+  – The configuration dictionary includes settings for training (optimizer, learning rate range, batch size, max epochs, early stopping patience), random seed, data preprocessing (numerical transformation with QuantileTransformer and categorical one-hot encoding), embedding parameters (for both PLE and periodic embeddings), backbone architecture (MLP, ResNet, Transformer hyperparameters), and hyperparameter tuning options (Optuna trials).  
+  – Immediately after loading the configuration, main.py sets the random seed (using a utility function from utils.py) for reproducibility as specified by the seed (e.g., seed 42).
+
+────────────────────────────
+2. Data Loading and Preprocessing
+
+• Instantiate the DatasetLoader class with the configuration dict.  
+  – Call its load_data() method to read in the datasets (via pandas) and apply all necessary preprocessing steps:  
+   o For numerical features, the QuantileTransformer is applied if “apply_preprocessing” is true (as indicated in config.yaml). (Note: when using PLE, the PLE outputs are in [0, 1] and are shift–scale invariant, so the raw scalar values may be used directly if desired.)  
+   o For categorical features, one-hot encoding is applied.  
+  – The DatasetLoader splits the data into training, validation, and test sets according to the methodology described in the paper (train for optimization, validation for hyperparameter tuning/early stopping, and test only for final evaluation).  
+• The loaded data is returned in a DataBundle object containing fields: train, val, and test.
+
+────────────────────────────
+3. Model Construction
+
+• Using the configuration settings, main.py will now initialize the backbone models from model.py.  
+  – Call the BackboneModel constructor with parameters: a list of embedding modules (each of which implements the forward() method defined in EmbeddingModule) and additional model parameters.  
+  – Based on the config embeddings field, decide which embedding type to instantiate for each numerical feature:  
+   o If config.embeddings.ple.method is set to “quantile,” create instances of PLEEmbedding (with quantile-based binning) using the quantile_bins_range from config; if “target_aware” is chosen then prepare the supervised binning parameters accordingly.  
+   o Optionally, if the periodic embedding is chosen (or if a variant experiment is run), instantiate a PeriodicEmbedding instance with parameters k_range and sigma as provided in the config.  
+  – In MLP-like architectures (as well as for ResNet), the embedded features are concatenated into one vector before being fed into the rest of the model. For Transformer-based backbones, each feature’s embedding is treated as a separate token (and, if needed, an additional linear layer is applied to encode feature indices).  
+• Also, use additional backbone parameters from config such as num_layers and layer_size for MLP, or corresponding settings for ResNet and Transformer.
+
+────────────────────────────
+4. Training Procedure
+
+• Create an instance of the Trainer class by passing the BackboneModel instance, the DataBundle (with train, val, and test splits), and the configuration dictionary.  
+  – The Trainer will use the AdamW optimizer (as defined in config.training.optimizer) with a learning rate from the tuning range (LogUniform distributed between 5e-05 and 0.005 for MLP, for example).  
+  – During training, the Trainer handles the forward pass (invoking the model.forward(x)), computes the appropriate loss function (cross-entropy for classification or MSE for regression), and performs backpropagation and optimization.  
+  – The Trainer incorporates early stopping with a patience of 16 epochs as specified in config.yaml.  
+  – If hyperparameter tuning is enabled (config.hyperparameter_tuning.use_optuna true), then the Trainer integrates with Optuna to optimize hyperparameters, using 'trials' number for exploration.
+• The Trainer loops over epochs, updating model weights until either max_epochs are reached or early stopping conditions are met.
+
+────────────────────────────
+5. Evaluation and Ensembling
+
+• After training is finished, main.py instantiates the Evaluator class using the trained model and the same DataBundle.  
+  – The Evaluator calls model.forward(x) for the validation and test splits, computes metrics such as accuracy (for classification) or RMSE (for regression), and may use utility functions (from utils.py) to aggregate these values.
+• For robust evaluation, the experiment is configured to execute 15 independent runs (using different seeds as set by config.evaluation.num_seeds).  
+  – The Evaluator then groups these 15 runs into ensemble groups (using ensemble_groups from config, e.g., 3 groups of 5 runs) and averages the predictions from each group. This procedure mimics the ensemble averaging as described in the paper.
+• Finally, the Evaluator returns a dictionary of evaluation metrics (including averages and standard deviations).
+
+────────────────────────────
+6. Logging and Output
+
+• main.py logs key information at each stage:  
+  – The loaded configuration parameters and hyperparameter settings.  
+  – Data statistics (number of samples, feature counts, etc.) from the DatasetLoader.  
+  – Model details including architecture parameters and the estimated parameter count (obtained via a utility function).  
+  – Training progress: epoch loss, early stopping trigger, and final training time.  
+  – Final evaluation metrics with aggregated ensemble results.
+• The results are printed to the console (and optionally saved to files for reproducibility) as final output.
+
+────────────────────────────
+7. Summary of Flow and Interactions
+
+The overall program call flow in main.py (referring to the provided sequence diagram) is as follows:
+  a. Call Config.load_config() → get config dict.  
+  b. Set random seed from config.  
+  c. Instantiate DatasetLoader (using config) → load DataBundle {train, val, test}.  
+  d. Initialize BackboneModel using embedding modules (either PLEEmbedding or PeriodicEmbedding, according to config) with backbone parameters (MLP/ResNet/Transformer).  
+  e. Instantiate Trainer with the BackboneModel, DataBundle, and config → run training loop via Trainer.train(), which internally invokes model.forward(), loss computation, optimization (AdamW), and early stopping.  
+  f. After training, instantiate Evaluator with the trained model and DataBundle → compute evaluation metrics (accuracy for classification or RMSE for regression).  
+  g. Optionally perform ensemble averaging over multiple seeds before printing final results.
+
+────────────────────────────
+8. Points Requiring Clarification
+
+• The exact mathematical details within the PeriodicEmbedding (e.g., which periodic function to use, how to combine the trainable coefficient cᵢ with the periodic transformation, and whether to mix the features before or after applying the function) remain to be precisely defined. This may require further review of Equation 2 in the paper and related references.  
+• Specific hyperparameter values (especially those pertaining to embedding bin counts or periodic module parameters) are defined only as search ranges in the configuration. The actual values may be determined via hyperparameter tuning with Optuna.
+• The input dataset format (especially for the 11 public datasets) must match the expectations of the DatasetLoader module. Proper handling of numerical and categorical data (with specific exceptions, like for CatBoost) should be ensured.
+
+────────────────────────────
+Conclusion
+
+This logic analysis for main.py ensures that we follow the paper’s methodology closely, integrating the embedding modules into the backbone architectures and setting up the experimental training and evaluation pipeline as described. By enforcing consistent data preprocessing (using QuantileTransformer and one-hot encoding), following the configuration from config.yaml, respecting the design of modular components (DatasetLoader → BackboneModel with EmbeddingModule → Trainer/Evaluator), and incorporating ensemble evaluation, the code written in main.py will serve as the cohesive controller for reproducing the experiments accurately and reproducibly.
+
+Happy coding!
+============================================
+
+🌟 Usage Summary 🌟
+[ANALYSIS] main.py
+🛠️ Model: o3-mini
+📥 Input tokens: 169 (Cost: $0.00018590)
+📦 Cached input tokens: 28672 (Cost: $0.01576960)
+📤 Output tokens: 2875 (Cost: $0.01265000)
+💵 Current total cost: $0.02860550
+🪙 Accumulated total cost so far: $0.37030730
+============================================
+
+  0%|          | 0/7 [00:00<?, ?it/s] 14%|█▍        | 1/7 [00:11<01:08, 11.42s/it][CODING] config.py
+============================================
+```python
+"""config.py
+
+This module is the single source-of-truth for all experiment configuration
+settings used throughout the project. It loads, validates, and exposes the
+configuration parameters defined in an external YAML file (default: config.yaml).
+
+Key Responsibilities:
+    - Load configuration settings with yaml.safe_load.
+    - Validate that all required sections are present:
+        • training
+        • seed
+        • data_preprocessing
+        • embeddings
+        • backbone
+        • hyperparameter_tuning
+        • evaluation
+    - Provide helper accessor functions for various experiment components.
+    - Ensure reproducibility by exposing the 'seed' value to all modules.
+    - Centralize hyperparameter search space definitions (e.g., learning_rate_range,
+      quantile_bins_range, k_range, etc.) required by backbone models and embedding modules.
+
+Note on Embeddings:
+    - For Piecewise Linear Encoding (PLE), the configuration includes the method
+      ('quantile' for unsupervised quantile-based binning or 'target_aware' for supervised
+      target-aware binning) and related ranges (quantile_bins_range and target_aware settings).
+    - For the Periodic Embedding module, the configuration sets the k_range and sigma (σ)
+      used for initializing trainable coefficients. Details on the specific periodic function,
+      its dimensions, and the integration of trainable coefficients are subject to further clarification.
+
+Usage:
+    Other modules (e.g., dataset_loader.py, model.py, trainer.py, evaluator.py) should import this
+    module and use the helper functions (e.g., get_training_config()) to access configuration values.
+"""
+
+import os
+from typing import Any, Dict
+import yaml
+
+def load_config(config_file: str = "config.yaml") -> Dict[str, Any]:
+    """
+    Load and validate the configuration from a YAML file.
+
+    Args:
+        config_file (str): Path to the configuration file. Default is "config.yaml".
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the configuration parameters.
+
+    Raises:
+        FileNotFoundError: If the configuration file does not exist.
+        KeyError: If any required configuration key is missing.
+    """
+    if not os.path.exists(config_file):
+        raise FileNotFoundError(f"Configuration file '{config_file}' not found. "
+                                "Please ensure that the config.yaml file is present.")
+    with open(config_file, "r") as file:
+        config = yaml.safe_load(file)
+
+    required_keys = [
+        "training",
+        "seed",
+        "data_preprocessing",
+        "embeddings",
+        "backbone",
+        "hyperparameter_tuning",
+        "evaluation"
+    ]
+    for key in required_keys:
+        if key not in config:
+            raise KeyError(f"Required configuration key '{key}' is missing in {config_file}")
+
+    return config
+
+# Set a global CONFIG variable that is imported by other modules for consistency.
+CONFIG: Dict[str, Any] = load_config()
+
+def get_training_config() -> Dict[str, Any]:
+    """
+    Retrieve the training configuration parameters.
+
+    Returns:
+        Dict[str, Any]: Configuration for training, including optimizer, learning_rate_range,
+        batch_size, max_epochs, and early_stopping_patience.
+    """
+    return CONFIG["training"]
+
+def get_seed() -> int:
+    """
+    Retrieve the random seed for reproducibility.
+
+    Returns:
+        int: The random seed value.
+    """
+    return int(CONFIG["seed"])
+
+def get_data_preprocessing_config() -> Dict[str, Any]:
+    """
+    Retrieve the data preprocessing configuration parameters.
+
+    Returns:
+        Dict[str, Any]: Configuration for data preprocessing (e.g., transformer for numerical
+        features and encoding for categorical features).
+    """
+    return CONFIG["data_preprocessing"]
+
+def get_embeddings_config() -> Dict[str, Any]:
+    """
+    Retrieve the embeddings configuration parameters.
+
+    Returns:
+        Dict[str, Any]: Configuration for embedding modules, including settings for
+        PLE (method, quantile_bins_range, target_aware parameters) and periodic embeddings (k_range, sigma).
+    """
+    return CONFIG["embeddings"]
+
+def get_backbone_config() -> Dict[str, Any]:
+    """
+    Retrieve the backbone model configuration parameters.
+
+    Returns:
+        Dict[str, Any]: Configuration for backbone architectures (MLP, ResNet, Transformer) including
+        the number of layers, layer size, and embedding size ranges for Transformer.
+    """
+    return CONFIG["backbone"]
+
+def get_hyperparameter_tuning_config() -> Dict[str, Any]:
+    """
+    Retrieve the hyperparameter tuning configuration parameters.
+
+    Returns:
+        Dict[str, Any]: Configuration related to hyperparameter tuning, including the use of Optuna and
+        the number of trials.
+    """
+    return CONFIG["hyperparameter_tuning"]
+
+def get_evaluation_config() -> Dict[str, Any]:
+    """
+    Retrieve the evaluation configuration parameters.
+
+    Returns:
+        Dict[str, Any]: Configuration for evaluation, including the number of seeds, ensemble groups,
+        and metric definitions (accuracy for classification and RMSE for regression).
+    """
+    return CONFIG["evaluation"]
+
+# Optionally, for debugging purposes, you may uncomment the following block to print the loaded configuration.
+# if __name__ == "__main__":
+#     import pprint
+#     pprint.pprint(CONFIG)
+```
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] config.py
+🛠️ Model: o3-mini
+📥 Input tokens: 7917 (Cost: $0.00870870)
+📦 Cached input tokens: 22400 (Cost: $0.01232000)
+📤 Output tokens: 2509 (Cost: $0.01103960)
+💵 Current total cost: $0.03206830
+🪙 Accumulated total cost so far: $0.40237560
+============================================
+
+[CODING] dataset_loader.py
+============================================
+ 29%|██▊       | 2/7 [00:45<02:04, 24.88s/it]## Code: dataset_loader.py
+```python
+"""dataset_loader.py
+
+This module defines the DatasetLoader class which is responsible for loading a raw dataset,
+applying necessary preprocessing for numerical and categorical features as per the configuration,
+splitting the data into training, validation, and test sets in a reproducible manner, and packaging
+the splits into a DataBundle data structure.
+
+Classes:
+    DataBundle: A container that holds train, validation, and test splits.
+    DatasetLoader: Reads the dataset from a CSV file, performs preprocessing (QuantileTransformer for
+        numerical features and one-hot encoding for categorical features), and splits the data.
+        
+Usage:
+    from dataset_loader import DatasetLoader
+    from config import CONFIG
+    loader = DatasetLoader(config=CONFIG, dataset_path="data/dataset.csv", target_column="target")
+    data_bundle = loader.load_data()
+"""
+
+import os
+from typing import Any, Dict, Tuple, Optional
+
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import QuantileTransformer, OneHotEncoder
+from sklearn.model_selection import train_test_split
+
+from config import get_data_preprocessing_config, get_seed
+
+class DataBundle:
+    """Container for dataset splits.
+    
+    Attributes:
+        train (Tuple[np.ndarray, np.ndarray]): A tuple (X_train, y_train).
+        val (Tuple[np.ndarray, np.ndarray]): A tuple (X_val, y_val).
+        test (Tuple[np.ndarray, np.ndarray]): A tuple (X_test, y_test).
+    """
+    def __init__(self,
+                 train: Tuple[np.ndarray, np.ndarray],
+                 val: Tuple[np.ndarray, np.ndarray],
+                 test: Tuple[np.ndarray, np.ndarray]) -> None:
+        self.train: Tuple[np.ndarray, np.ndarray] = train
+        self.val: Tuple[np.ndarray, np.ndarray] = val
+        self.test: Tuple[np.ndarray, np.ndarray] = test
+
+
+class DatasetLoader:
+    """Class for loading and preprocessing datasets.
+    
+    Reads a dataset from a CSV file, applies preprocessing as per configuration settings, splits
+    the dataset into train, validation, and test sets, and returns a DataBundle containing these
+    splits.
+
+    Attributes:
+        config (Dict[str, Any]): Configuration dictionary loaded from config.yaml.
+        dataset_path (str): Path to the raw dataset file.
+        target_column (str): Name of the target/label column.
+    """
+    def __init__(self,
+                 config: Dict[str, Any],
+                 dataset_path: str = "data/dataset.csv",
+                 target_column: str = "target") -> None:
+        """
+        Initialize DatasetLoader with configuration, dataset file path, and target column.
+        
+        Args:
+            config (Dict[str, Any]): Configuration dictionary.
+            dataset_path (str, optional): File path to the dataset. Defaults to "data/dataset.csv".
+            target_column (str, optional): Name of the target column. Defaults to "target".
+        """
+        self.config: Dict[str, Any] = config
+        self.dataset_path: str = dataset_path
+        self.target_column: str = target_column
+
+    def load_data(self) -> DataBundle:
+        """
+        Load, preprocess, and split the raw dataset into train, validation, and test sets.
+        
+        Preprocessing for numerical features is applied using a QuantileTransformer (if enabled in
+        the configuration) and categorical features are converted via one-hot encoding.
+        The splits are created in a reproducible manner using the configured random seed.
+        
+        Returns:
+            DataBundle: A container with three splits: train, val, and test where each split is a
+                        tuple (X, y) represented as numpy arrays.
+        """
+        # Check if dataset file exists.
+        if not os.path.exists(self.dataset_path):
+            raise FileNotFoundError(f"Dataset file '{self.dataset_path}' not found.")
+
+        # Load dataset using pandas.
+        df: pd.DataFrame = pd.read_csv(self.dataset_path)
+        if df.empty:
+            raise ValueError(f"Dataset file '{self.dataset_path}' is empty.")
+
+        # Ensure target column exists.
+        if self.target_column not in df.columns:
+            raise KeyError(f"Target column '{self.target_column}' not found in dataset.")
+
+        # Separate target and features.
+        y: pd.Series = df[self.target_column]
+        X: pd.DataFrame = df.drop(columns=[self.target_column])
+
+        # Identify numerical and categorical feature columns.
+        numerical_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+        categorical_cols = X.select_dtypes(exclude=[np.number]).columns.tolist()
+
+        print(f"Loaded dataset with {df.shape[0]} samples and {df.shape[1]} columns.")
+        print(f"Identified {len(numerical_cols)} numerical features: {numerical_cols}")
+        print(f"Identified {len(categorical_cols)} categorical features: {categorical_cols}")
+
+        # Define reproducible split parameters.
+        seed_value: int = get_seed()
+        train_ratio: float = 0.70
+        temp_ratio: float = 0.30  # Combined ratio for validation and test.
+
+        # Determine whether to use stratified splitting.
+        # Use stratification if target has <= 10 unique values.
+        stratify_val: Optional[pd.Series] = y if y.nunique() <= 10 else None
+
+        # First split: training set and temporary set (to be further split).
+        train_df, temp_df = train_test_split(
+            df,
+            test_size=temp_ratio,
+            random_state=seed_value,
+            stratify=stratify_val
+        )
+
+        # For the second split, use stratification on the temporary set if applicable.
+        stratify_temp: Optional[pd.Series] = temp_df[self.target_column] if temp_df[self.target_column].nunique() <= 10 else None
+
+        # Split temp into validation and test sets equally.
+        val_df, test_df = train_test_split(
+            temp_df,
+            test_size=0.5,
+            random_state=seed_value,
+            stratify=stratify_temp
+        )
+
+        print(f"Split dataset into train: {train_df.shape[0]} samples, "
+              f"validation: {val_df.shape[0]} samples, test: {test_df.shape[0]} samples.")
+
+        # Extract features and labels for each split.
+        X_train: pd.DataFrame = train_df.drop(columns=[self.target_column])
+        y_train: pd.Series = train_df[self.target_column]
+        X_val: pd.DataFrame = val_df.drop(columns=[self.target_column])
+        y_val: pd.Series = val_df[self.target_column]
+        X_test: pd.DataFrame = test_df.drop(columns=[self.target_column])
+        y_test: pd.Series = test_df[self.target_column]
+
+        # Retrieve data preprocessing configuration.
+        dp_config: Dict[str, Any] = self.config.get("data_preprocessing", {})
+        apply_preprocessing: bool = dp_config.get("apply_preprocessing", True)
+        numerical_transformer_type: str = dp_config.get("numerical", {}).get("transformer", "QuantileTransformer")
+        categorical_encoding: str = dp_config.get("categorical", {}).get("encoding", "one-hot")
+
+        # Preprocess numerical features if required.
+        if apply_preprocessing and numerical_transformer_type == "QuantileTransformer" and numerical_cols:
+            qt = QuantileTransformer(output_distribution="uniform", random_state=seed_value)
+            # Fit on training numerical data.
+            X_train_num = pd.DataFrame(
+                qt.fit_transform(X_train[numerical_cols]),
+                columns=numerical_cols,
+                index=X_train.index
+            )
+            # Transform validation and test numerical data.
+            X_val_num = pd.DataFrame(
+                qt.transform(X_val[numerical_cols]),
+                columns=numerical_cols,
+                index=X_val.index
+            )
+            X_test_num = pd.DataFrame(
+                qt.transform(X_test[numerical_cols]),
+                columns=numerical_cols,
+                index=X_test.index
+            )
+        else:
+            # Use raw numerical features if preprocessing is not applied.
+            X_train_num = X_train[numerical_cols] if numerical_cols else pd.DataFrame(index=X_train.index)
+            X_val_num = X_val[numerical_cols] if numerical_cols else pd.DataFrame(index=X_val.index)
+            X_test_num = X_test[numerical_cols] if numerical_cols else pd.DataFrame(index=X_test.index)
+
+        # Preprocess categorical features using one-hot encoding if applicable.
+        if categorical_cols and categorical_encoding == "one-hot":
+            encoder = OneHotEncoder(sparse=False, handle_unknown="ignore")
+            # Fit on training categorical data.
+            X_train_cat = encoder.fit_transform(X_train[categorical_cols])
+            X_val_cat = encoder.transform(X_val[categorical_cols])
+            X_test_cat = encoder.transform(X_test[categorical_cols])
+            # Retrieve one-hot encoded feature names.
+            cat_feature_names = encoder.get_feature_names_out(categorical_cols)
+            # Convert to DataFrames.
+            X_train_cat = pd.DataFrame(X_train_cat, columns=cat_feature_names, index=X_train.index)
+            X_val_cat = pd.DataFrame(X_val_cat, columns=cat_feature_names, index=X_val.index)
+            X_test_cat = pd.DataFrame(X_test_cat, columns=cat_feature_names, index=X_test.index)
+        else:
+            X_train_cat = pd.DataFrame(index=X_train.index)
+            X_val_cat = pd.DataFrame(index=X_val.index)
+            X_test_cat = pd.DataFrame(index=X_test.index)
+
+        # Combine numerical and categorical processed features.
+        X_train_processed: pd.DataFrame = pd.concat([X_train_num, X_train_cat], axis=1)
+        X_val_processed: pd.DataFrame = pd.concat([X_val_num, X_val_cat], axis=1)
+        X_test_processed: pd.DataFrame = pd.concat([X_test_num, X_test_cat], axis=1)
+
+        print(f"Processed training features shape: {X_train_processed.shape}")
+        print(f"Processed validation features shape: {X_val_processed.shape}")
+        print(f"Processed test features shape: {X_test_processed.shape}")
+
+        # Convert features to numpy arrays, ensuring float32 type.
+        X_train_np: np.ndarray = X_train_processed.to_numpy(dtype=np.float32)
+        X_val_np: np.ndarray = X_val_processed.to_numpy(dtype=np.float32)
+        X_test_np: np.ndarray = X_test_processed.to_numpy(dtype=np.float32)
+
+        # Convert target labels to numpy arrays. For classification (<=10 unique values), leave as is.
+        if y_train.nunique() <= 10:
+            y_train_np: np.ndarray = y_train.to_numpy()
+            y_val_np: np.ndarray = y_val.to_numpy()
+            y_test_np: np.ndarray = y_test.to_numpy()
+        else:
+            y_train_np = y_train.to_numpy(dtype=np.float32)
+            y_val_np = y_val.to_numpy(dtype=np.float32)
+            y_test_np = y_test.to_numpy(dtype=np.float32)
+
+        # Package the splits into a DataBundle instance.
+        data_bundle: DataBundle = DataBundle(
+            train=(X_train_np, y_train_np),
+            val=(X_val_np, y_val_np),
+            test=(X_test_np, y_test_np)
+        )
+        return data_bundle
+
+
+if __name__ == "__main__":
+    # For testing the dataset loader independently.
+    from config import CONFIG
+    loader = DatasetLoader(config=CONFIG, dataset_path="data/dataset.csv", target_column="target")
+    data = loader.load_data()
+    print(f"Train features shape: {data.train[0].shape}, Train labels shape: {data.train[1].shape}")
+    print(f"Validation features shape: {data.val[0].shape}, Validation labels shape: {data.val[1].shape}")
+    print(f"Test features shape: {data.test[0].shape}, Test labels shape: {data.test[1].shape}")
+```
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] dataset_loader.py
+🛠️ Model: o3-mini
+📥 Input tokens: 4178 (Cost: $0.00459580)
+📦 Cached input tokens: 27520 (Cost: $0.01513600)
+📤 Output tokens: 8385 (Cost: $0.03689400)
+💵 Current total cost: $0.05662580
+🪙 Accumulated total cost so far: $0.45900140
+============================================
+
+[CODING] model.py
+============================================
+## Code: model.py
+```python
+"""
+model.py
+
+This module defines the overall model architecture used for embedding numerical features
+into high-dimensional representations and processing them through deep backbones.
+
+It includes:
+  - EmbeddingModule: Abstract base class for numerical feature embedding modules.
+  - PLEEmbedding: Implements Piecewise Linear Encoding (PLE) for numerical features.
+  - PeriodicEmbedding: Implements periodic activation-based embedding.
+  - ResidualBlock: A simple residual block for ResNet-like backbones.
+  - BackboneModel: Integrates per-feature embeddings with a selected deep network backbone
+                   (MLP, ResNet, or Transformer).
+
+Configurations for embedding parameters and backbone structure are read from config.yaml
+(via functions in config.py).
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import List, Optional
+
+# Import backbone configuration getter from config.py.
+from config import get_backbone_config
+
+
+class EmbeddingModule(nn.Module):
+    """
+    Abstract base class for numerical feature embedding modules.
+    
+    Subclasses must implement the forward method.
+    """
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the embedding module.
+        
+        Args:
+            x (torch.Tensor): Tensor of shape (batch_size, 1) representing scalar input.
+        
+        Returns:
+            torch.Tensor: Embedded representation of shape (batch_size, embedding_dim).
+        """
+        raise NotImplementedError("Subclasses of EmbeddingModule must implement forward().")
+
+
+class PLEEmbedding(EmbeddingModule):
+    """
+    Piecewise Linear Encoding (PLE) embedding module.
+    
+    Implements a binning-based piecewise linear transformation. Given a set of predetermined
+    bin boundaries, the module computes a T-dimensional vector for each scalar input as follows:
+    
+      For each bin i (with lower boundary b[i] and upper boundary b[i+1]):
+        - if x >= b[i+1]: output 1,
+        - elif x < b[i]: output 0,
+        - else: output (x - b[i]) / (b[i+1] - b[i]).
+    
+    The resulting vector is then fused via a linear layer.
+    
+    Attributes:
+        bins (int): Number of bins (T).
+        method (str): Binning strategy used (e.g., "quantile" or "target_aware").
+        embedding_dim (int): Desired final output dimension.
+        fusion (nn.Linear): Linear layer that maps the T-dimensional vector to embedding_dim.
+        boundaries (Optional[torch.Tensor]): 1D tensor of bin boundaries with shape (bins+1,).
+    """
+    def __init__(
+        self,
+        bins: int = 10,
+        method: str = "quantile",
+        embedding_dim: int = 32,
+        boundaries: Optional[torch.Tensor] = None
+    ) -> None:
+        """
+        Initialize the PLEEmbedding.
+        
+        Args:
+            bins (int): Number of bins to use. Default is 10.
+            method (str): Binning method ("quantile" or "target_aware"). Default is "quantile".
+            embedding_dim (int): Output embedding dimension. Default is 32.
+            boundaries (Optional[torch.Tensor]): Optional tensor of bin boundaries (shape: (bins+1,)).
+                If provided, it is registered as a non-trainable buffer.
+        """
+        super().__init__()
+        self.bins: int = bins
+        self.method: str = method
+        self.embedding_dim: int = embedding_dim
+        self.fusion: nn.Linear = nn.Linear(self.bins, self.embedding_dim, bias=True)
+        if boundaries is not None:
+            if boundaries.ndim != 1 or boundaries.shape[0] != self.bins + 1:
+                raise ValueError("Boundaries tensor must have shape (bins+1,)")
+            self.register_buffer("boundaries", boundaries)
+        else:
+            self.boundaries = None
+
+    def set_boundaries(self, boundaries: torch.Tensor) -> None:
+        """
+        Set the bin boundaries for the PLE embedding.
+        
+        Args:
+            boundaries (torch.Tensor): Tensor of shape (bins+1,) containing bin boundaries.
+        """
+        if boundaries.ndim != 1 or boundaries.shape[0] != self.bins + 1:
+            raise ValueError("Boundaries tensor must have shape (bins+1,)")
+        self.register_buffer("boundaries", boundaries)
+        self.boundaries = boundaries
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the PLE embedding.
+        
+        Computes a T-dimensional vector based on the bin boundaries and fuses it using a linear layer.
+        
+        Args:
+            x (torch.Tensor): Tensor of shape (batch_size, 1) representing raw scalar features.
+        
+        Returns:
+            torch.Tensor: Tensor of shape (batch_size, embedding_dim) with the final embedding.
+        """
+        if self.boundaries is None:
+            raise ValueError("Boundaries are not set for PLEEmbedding.")
+        # Extract lower and upper boundaries from the boundaries tensor.
+        # boundaries shape: (bins+1,) => lower: (bins,), upper: (bins,)
+        lower: torch.Tensor = self.boundaries[:-1]
+        upper: torch.Tensor = self.boundaries[1:]
+        # Reshape for broadcasting: (1, bins)
+        lower = lower.unsqueeze(0)
+        upper = upper.unsqueeze(0)
+        # Expand input x to shape: (batch_size, bins)
+        x_expanded: torch.Tensor = x.expand(-1, self.bins)
+        # Compute the raw fractional activation.
+        fraction: torch.Tensor = (x_expanded - lower) / (upper - lower)
+        # Apply piecewise conditions:
+        # If x >= upper => output 1; if x < lower => output 0; otherwise use the fraction.
+        ones_tensor: torch.Tensor = torch.ones_like(fraction)
+        zeros_tensor: torch.Tensor = torch.zeros_like(fraction)
+        e: torch.Tensor = torch.where(x_expanded >= upper, ones_tensor, fraction)
+        e = torch.where(x_expanded < lower, zeros_tensor, e)
+        # Fuse the T-dimensional vector through a linear layer.
+        embedding: torch.Tensor = self.fusion(e)
+        return embedding
+
+
+class PeriodicEmbedding(EmbeddingModule):
+    """
+    Periodic activation-based embedding module.
+    
+    Applies a sine-based periodic transformation with learnable offsets to the scalar input, then
+    fuses the output using a linear layer.
+    
+    Computation:
+      - Expand input x (shape: batch_size x 1) to (batch_size x k).
+      - Compute periodic features: sin(x * frequency + c), where
+          • frequency is a fixed vector (initialized as a linearly spaced tensor),
+          • c is a trainable parameter (initialized from N(0, sigma)).
+      - Fuse the periodic features with a linear fusion layer to yield the final embedding.
+    
+    Attributes:
+        k (int): Number of periodic components.
+        sigma (float): Standard deviation for initializing the trainable offsets c.
+        embedding_dim (int): Desired output embedding dimension.
+        c (nn.Parameter): Trainable parameter of shape (k,) representing offsets.
+        frequency (torch.Tensor): Fixed non-trainable frequency vector of shape (k,).
+        fusion (nn.Linear): Linear layer mapping the k periodic features to embedding_dim.
+    """
+    def __init__(
+        self,
+        k: int = 10,
+        sigma: float = 0.1,
+        embedding_dim: int = 32
+    ) -> None:
+        """
+        Initialize the PeriodicEmbedding.
+        
+        Args:
+            k (int): Number of periodic components (default: 10).
+            sigma (float): Standard deviation for offset initialization (default: 0.1).
+            embedding_dim (int): Desired output embedding dimension (default: 32).
+        """
+        super().__init__()
+        self.k: int = k
+        self.sigma: float = sigma
+        self.embedding_dim: int = embedding_dim
+        # Initialize trainable offsets c from N(0, sigma) with shape (k,).
+        self.c: nn.Parameter = nn.Parameter(torch.randn(self.k) * self.sigma)
+        # Define a fixed frequency vector, here using a linear space from 1 to k.
+        self.register_buffer("frequency", torch.linspace(1.0, float(self.k), steps=self.k))
+        # Linear fusion layer mapping from k to embedding_dim.
+        self.fusion: nn.Linear = nn.Linear(self.k, self.embedding_dim, bias=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the periodic embedding.
+        
+        Args:
+            x (torch.Tensor): Tensor of shape (batch_size, 1) containing raw scalar features.
+        
+        Returns:
+            torch.Tensor: Tensor of shape (batch_size, embedding_dim) with the final embedding.
+        """
+        # Expand input x to shape (batch_size, k).
+        x_expanded: torch.Tensor = x.expand(-1, self.k)
+        # Reshape frequency and offset for broadcast: (1, k)
+        freq: torch.Tensor = self.frequency.unsqueeze(0)
+        offset: torch.Tensor = self.c.unsqueeze(0)
+        # Compute the periodic transformation.
+        periodic_out: torch.Tensor = torch.sin(x_expanded * freq + offset)
+        # Fuse the periodic features through the linear layer.
+        embedding: torch.Tensor = self.fusion(periodic_out)
+        return embedding
+
+
+class ResidualBlock(nn.Module):
+    """
+    A simple residual block used in ResNet-like backbones.
+
+    Performs:
+      out = ReLU(linear2(ReLU(linear1(x))) + x)
+    """
+    def __init__(self, dim: int) -> None:
+        """
+        Initialize the ResidualBlock.
+        
+        Args:
+            dim (int): Dimension of input and output.
+        """
+        super().__init__()
+        self.linear1: nn.Linear = nn.Linear(dim, dim)
+        self.relu: nn.ReLU = nn.ReLU()
+        self.linear2: nn.Linear = nn.Linear(dim, dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the residual block.
+        
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, dim).
+        
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, dim).
+        """
+        residual = x
+        out = self.linear1(x)
+        out = self.relu(out)
+        out = self.linear2(out)
+        out = self.relu(out + residual)
+        return out
+
+
+class BackboneModel(nn.Module):
+    """
+    Backbone model that integrates per-feature embedding modules with a chosen deep network.
+    
+    Supports three backbone types:
+      - "mlp": Concatenates embeddings and forwards through an MLP.
+      - "resnet": Concatenates embeddings and processes through residual blocks.
+      - "transformer": Stacks embeddings as tokens and processes via a Transformer encoder.
+    
+    Attributes:
+        embeddings (nn.ModuleList): List of individual embedding modules (one per numerical feature).
+        backbone_type (str): Type of backbone to use ("mlp", "resnet", "transformer").
+        backbone: Subnetwork processing the aggregated embedding.
+    """
+    def __init__(self, embeddings: List[EmbeddingModule], params: dict) -> None:
+        """
+        Initialize the BackboneModel.
+        
+        Args:
+            embeddings (List[EmbeddingModule]): List of embedding modules, each handling a single feature.
+            params (dict): Backbone parameters. Expected keys:
+                - type: Backbone type ("mlp", "resnet", "transformer"). Default: "mlp".
+                - For MLP/ResNet: num_layers, layer_size, output_dim.
+                - For Transformer: num_layers, embedding_size, nhead, dim_feedforward, output_dim.
+        """
+        super().__init__()
+        self.embeddings: nn.ModuleList = nn.ModuleList(embeddings)
+        self.backbone_type: str = params.get("type", "mlp").lower()
+
+        if self.backbone_type == "mlp":
+            # MLP backbone: concatenate embeddings and process with fully connected layers.
+            num_layers: int = params.get("num_layers", 4)
+            layer_size: int = params.get("layer_size", 256)
+            output_dim: int = params.get("output_dim", 1)
+            input_dim: int = sum(e.embedding_dim for e in embeddings)
+            layers: List[nn.Module] = []
+            prev_dim: int = input_dim
+            for _ in range(num_layers):
+                layers.append(nn.Linear(prev_dim, layer_size))
+                layers.append(nn.ReLU())
+                prev_dim = layer_size
+            layers.append(nn.Linear(prev_dim, output_dim))
+            self.backbone: nn.Sequential = nn.Sequential(*layers)
+
+        elif self.backbone_type == "resnet":
+            # ResNet backbone: concatenate embeddings and process with residual blocks.
+            num_layers: int = params.get("num_layers", 4)
+            layer_size: int = params.get("layer_size", 256)
+            output_dim: int = params.get("output_dim", 1)
+            input_dim: int = sum(e.embedding_dim for e in embeddings)
+            self.input_layer: nn.Linear = nn.Linear(input_dim, layer_size)
+            self.res_blocks: nn.ModuleList = nn.ModuleList(
+                [ResidualBlock(layer_size) for _ in range(num_layers)]
+            )
+            self.output_layer: nn.Linear = nn.Linear(layer_size, output_dim)
+
+        elif self.backbone_type == "transformer":
+            # Transformer backbone: stack embeddings as tokens and process with a Transformer encoder.
+            num_features: int = len(embeddings)
+            # Assume all embedding modules output the same dimension.
+            embedding_dim: int = embeddings[0].embedding_dim
+            # Optional linear projection to encode feature index information.
+            self.token_projection: nn.Linear = nn.Linear(embedding_dim, embedding_dim)
+            # Transformer encoder parameters.
+            num_layers: int = params.get("num_layers", 2)
+            d_model: int = params.get("embedding_size", embedding_dim)
+            nhead: int = params.get("nhead", 4)
+            dim_feedforward: int = params.get("dim_feedforward", d_model * 4)
+            encoder_layer: nn.TransformerEncoderLayer = nn.TransformerEncoderLayer(
+                d_model=d_model,
+                nhead=nhead,
+                dim_feedforward=dim_feedforward
+            )
+            self.transformer_encoder: nn.TransformerEncoder = nn.TransformerEncoder(
+                encoder_layer, num_layers=num_layers
+            )
+            output_dim: int = params.get("output_dim", 1)
+            self.transformer_fc: nn.Linear = nn.Linear(d_model, output_dim)
+
+        else:
+            raise ValueError(f"Unsupported backbone type: {self.backbone_type}")
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for the BackboneModel.
+        
+        Args:
+            x (torch.Tensor): Tensor of shape (batch_size, num_features) where each column is a numerical feature.
+        
+        Returns:
+            torch.Tensor: Model predictions.
+        """
+        embedded_features: List[torch.Tensor] = []
+        # Process each feature separately using its corresponding embedding module.
+        for i, embedding_module in enumerate(self.embeddings):
+            feature: torch.Tensor = x[:, i].unsqueeze(1)  # Shape: (batch_size, 1)
+            emb: torch.Tensor = embedding_module(feature)
+            embedded_features.append(emb)
+
+        if self.backbone_type in ["mlp", "resnet"]:
+            # Concatenate embeddings into a flat vector.
+            concatenated: torch.Tensor = torch.cat(embedded_features, dim=1)
+            if self.backbone_type == "mlp":
+                output: torch.Tensor = self.backbone(concatenated)
+            else:
+                x_res: torch.Tensor = self.input_layer(concatenated)
+                for block in self.res_blocks:
+                    x_res = block(x_res)
+                output = self.output_layer(x_res)
+            return output
+
+        elif self.backbone_type == "transformer":
+            # Stack embeddings as tokens: shape (batch_size, num_features, embedding_dim).
+            tokens: torch.Tensor = torch.stack(embedded_features, dim=1)
+            tokens = self.token_projection(tokens)
+            # Transformer encoder expects input shape (sequence_length, batch_size, d_model).
+            tokens = tokens.transpose(0, 1)
+            transformer_out: torch.Tensor = self.transformer_encoder(tokens)
+            transformer_out = transformer_out.transpose(0, 1)
+            # Pool tokens by averaging.
+            pooled: torch.Tensor = transformer_out.mean(dim=1)
+            output: torch.Tensor = self.transformer_fc(pooled)
+            return output
+
+        else:
+            raise ValueError(f"Unsupported backbone type: {self.backbone_type}")
+``` 43%|████▎     | 3/7 [01:44<02:41, 40.34s/it] 57%|█████▋    | 4/7 [01:56<01:27, 29.28s/it]
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] model.py
+🛠️ Model: o3-mini
+📥 Input tokens: 5603 (Cost: $0.00616330)
+📦 Cached input tokens: 29568 (Cost: $0.01626240)
+📤 Output tokens: 14437 (Cost: $0.06352280)
+💵 Current total cost: $0.08594850
+🪙 Accumulated total cost so far: $0.54494990
+============================================
+
+[CODING] utils.py
+============================================
+```python
+"""utils.py
+
+This module provides common utility functions used across the project.
+It includes functions for reproducibility (seed setting), metric calculations,
+logging configuration, and model parameter counting.
+
+Functions:
+    - set_seed(seed: int) -> None
+      Sets the random seed for Python’s random module, NumPy, and PyTorch to ensure reproducibility.
+
+    - compute_accuracy(predictions: Union[torch.Tensor, np.ndarray],
+                       targets: Union[torch.Tensor, np.ndarray]) -> float
+      Computes classification accuracy given predictions and true targets.
+      If predictions are raw logits (2D tensor with more than one column), it applies argmax.
+
+    - compute_rmse(predictions: Union[torch.Tensor, np.ndarray],
+                   targets: Union[torch.Tensor, np.ndarray]) -> float
+      Computes the root mean squared error (RMSE) between predictions and targets.
+
+    - get_logger(name: str) -> logging.Logger
+      Returns a configured logger with a standard format for timestamps, name, level, and message.
+
+    - count_parameters(model: torch.nn.Module) -> int
+      Returns the total number of trainable parameters in the model.
+
+Additional utility functions can be added here as needed.
+"""
+
+import os
+import random
+import logging
+from typing import Union
+
+import numpy as np
+import torch
+
+
+def set_seed(seed: int = 42) -> None:
+    """
+    Set the random seed for Python, NumPy, and PyTorch to ensure reproducibility.
+
+    Args:
+        seed (int): The seed value. Default is 42.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    # Ensure deterministic behavior in cudnn
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def compute_accuracy(
+    predictions: Union[torch.Tensor, np.ndarray],
+    targets: Union[torch.Tensor, np.ndarray]
+) -> float:
+    """
+    Compute the classification accuracy given predictions and targets.
+    
+    If predictions are raw logits (tensor with more than one column), the function
+    applies argmax along the last dimension to obtain predicted labels.
+    
+    This function supports both torch.Tensor and numpy.ndarray inputs.
+    
+    Args:
+        predictions (Union[torch.Tensor, np.ndarray]): Model predictions.
+        targets (Union[torch.Tensor, np.ndarray]): Ground truth labels.
+        
+    Returns:
+        float: Accuracy as a fraction between 0 and 1.
+    """
+    # Convert torch tensors to numpy arrays if needed.
+    if isinstance(predictions, torch.Tensor):
+        if predictions.ndim > 1 and predictions.shape[-1] > 1:
+            pred_labels = torch.argmax(predictions, dim=1)
+        else:
+            # For binary or single-output cases: use threshold of 0.5 if logits are probabilities.
+            pred_labels = predictions.squeeze()
+        pred_labels = pred_labels.detach().cpu().numpy()
+    else:
+        if predictions.ndim > 1 and predictions.shape[-1] > 1:
+            pred_labels = np.argmax(predictions, axis=1)
+        else:
+            pred_labels = predictions.squeeze()
+    
+    if isinstance(targets, torch.Tensor):
+        true_labels = targets.detach().cpu().numpy().squeeze()
+    else:
+        true_labels = np.array(targets).squeeze()
+
+    # Compute accuracy.
+    if pred_labels.shape != true_labels.shape:
+        raise ValueError(f"Shape mismatch: predictions shape {pred_labels.shape} and targets shape {true_labels.shape} must be identical.")
+    
+    accuracy = np.mean(pred_labels == true_labels)
+    return float(accuracy)
+
+
+def compute_rmse(
+    predictions: Union[torch.Tensor, np.ndarray],
+    targets: Union[torch.Tensor, np.ndarray]
+) -> float:
+    """
+    Compute the root mean squared error (RMSE) between predictions and targets.
+    
+    This function supports both torch.Tensor and numpy.ndarray inputs.
+    
+    Args:
+        predictions (Union[torch.Tensor, np.ndarray]): Model predictions.
+        targets (Union[torch.Tensor, np.ndarray]): Ground truth values.
+        
+    Returns:
+        float: The computed RMSE.
+    """
+    # Convert torch tensors to numpy arrays if necessary.
+    if isinstance(predictions, torch.Tensor):
+        preds = predictions.detach().cpu().numpy()
+    else:
+        preds = np.array(predictions)
+    
+    if isinstance(targets, torch.Tensor):
+        truths = targets.detach().cpu().numpy()
+    else:
+        truths = np.array(targets)
+    
+    mse = np.mean((preds - truths) ** 2)
+    rmse = np.sqrt(mse)
+    return float(rmse)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Get and configure a logger with the specified name.
+    
+    The logger is configured to output messages with timestamps, logger name, logging level,
+    and the message. If no handlers are already set for the logger, a StreamHandler is added.
+    
+    Args:
+        name (str): The name of the logger.
+        
+    Returns:
+        logging.Logger: The configured logger.
+    """
+    logger = logging.getLogger(name)
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
+        formatter = logging.Formatter(
+            fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+    return logger
+
+
+def count_parameters(model: torch.nn.Module) -> int:
+    """
+    Count the total number of trainable parameters in a PyTorch model.
+    
+    Args:
+        model (torch.nn.Module): The model whose parameters are to be counted.
+    
+    Returns:
+        int: Total count of trainable parameters.
+    """
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+```
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] utils.py
+🛠️ Model: o3-mini
+📥 Input tokens: 5583 (Cost: $0.00614130)
+📦 Cached input tokens: 31616 (Cost: $0.01738880)
+📤 Output tokens: 2796 (Cost: $0.01230240)
+💵 Current total cost: $0.03583250
+🪙 Accumulated total cost so far: $0.58078240
+============================================
+
+[CODING] trainer.py
+============================================
+ 71%|███████▏  | 5/7 [02:25<00:57, 28.99s/it]```python
+"""trainer.py
+
+This module implements the Trainer class which encapsulates the training loop,
+loss computation, optimization (using AdamW), early stopping, and checkpointing.
+It supports both regression and classification tasks, determining the loss function
+and evaluation metric based on the target data in the provided DataBundle.
+
+Classes:
+    Trainer: Manages the data loaders, training epochs, validation evaluation,
+             early stopping mechanism, and model checkpointing.
+
+Usage:
+    from trainer import Trainer
+    trainer = Trainer(model, data_bundle, config)
+    best_val_metric = trainer.train()
+    # The best model will be saved to disk and loaded into model.
+"""
+
+import os
+import time
+import logging
+from typing import Any, Dict
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+
+from config import get_training_config, get_hyperparameter_tuning_config, get_seed
+from utils import set_seed, compute_accuracy, compute_rmse, get_logger, count_parameters
+from dataset_loader import DataBundle
+
+
+class Trainer:
+    """
+    Trainer class for managing the training process of a BackboneModel using a given DataBundle.
+    
+    Attributes:
+        model (nn.Module): The BackboneModel instance incorporating embedding modules.
+        data (DataBundle): The dataset splits (train, validation, test).
+        config (dict): The complete configuration dictionary loaded from config.yaml.
+        device (torch.device): The PyTorch device (CPU or CUDA) on which the model is deployed.
+        optimizer (torch.optim.Optimizer): The optimizer (AdamW) instance.
+        criterion (nn.Module): The loss function (MSELoss for regression, CrossEntropyLoss for classification).
+        task_type (str): Either "regression" or "classification", determined from training targets.
+        batch_size (int): Batch size for training and validation.
+        max_epochs (int): Maximum number of training epochs.
+        patience (int): Early stopping patience (number of epochs with no improvement).
+        best_metric (float): Best observed validation metric (lower for regression, higher for classification).
+        early_stop_counter (int): Counter for consecutive epochs with no improvement.
+        checkpoint_path (str): File path to save the best model checkpoint.
+        use_optuna (bool): Flag indicating if hyperparameter tuning via Optuna is enabled.
+        logger (logging.Logger): Logger for outputting training progress and status.
+    """
+    def __init__(self, model: nn.Module, data: DataBundle, config: Dict[str, Any]) -> None:
+        """
+        Initialize the Trainer instance.
+        
+        Args:
+            model (nn.Module): A BackboneModel instance with embedding modules.
+            data (DataBundle): Object containing train, validation, and test splits.
+            config (Dict[str, Any]): Configuration dictionary loaded from config.yaml.
+        """
+        self.model = model
+        self.data = data
+        self.config = config
+
+        # Retrieve training and hyperparameter tuning configurations.
+        self.training_config: Dict[str, Any] = config.get("training", {})
+        self.hp_tuning_config: Dict[str, Any] = config.get("hyperparameter_tuning", {})
+        self.evaluation_config: Dict[str, Any] = config.get("evaluation", {})
+
+        # Set random seed for reproducibility.
+        set_seed(get_seed())
+
+        # Set up device.
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
+
+        # Initialize optimizer using AdamW.
+        lr_range = self.training_config.get("learning_rate_range", [5e-05, 0.005])
+        # Default learning rate is the midpoint of the provided range.
+        lr_default: float = (lr_range[0] + lr_range[1]) / 2.0
+        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr_default)
+
+        # Set training parameters.
+        self.batch_size: int = self.training_config.get("batch_size", 128)
+        self.max_epochs: int = self.training_config.get("max_epochs", 100)
+        self.patience: int = self.training_config.get("early_stopping_patience", 16)
+
+        # Determine the task type based on training targets.
+        train_targets = self.data.train[1]
+        unique_targets = np.unique(train_targets)
+        if len(unique_targets) <= 10:
+            self.task_type: str = "classification"
+            self.criterion = nn.CrossEntropyLoss()
+        else:
+            self.task_type = "regression"
+            self.criterion = nn.MSELoss()
+
+        # Initialize early stopping variables.
+        if self.task_type == "regression":
+            self.best_metric: float = float("inf")  # Lower RMSE is better.
+        else:
+            self.best_metric = -float("inf")         # Higher accuracy is better.
+        self.early_stop_counter: int = 0
+        self.best_epoch: int = 0
+        self.checkpoint_path: str = "best_model.pt"
+
+        # Check if hyperparameter tuning is enabled.
+        self.use_optuna: bool = self.hp_tuning_config.get("use_optuna", False)
+
+        self.logger: logging.Logger = get_logger("Trainer")
+        self.logger.info(f"Trainer initialized on device: {self.device}. Task type: {self.task_type}.")
+        self.logger.info(f"Model parameter count: {count_parameters(self.model)}.")
+
+    def _create_dataloader(self, data_split: tuple, shuffle: bool = False) -> DataLoader:
+        """
+        Create a PyTorch DataLoader from a dataset split.
+        
+        Args:
+            data_split (tuple): A tuple (X, y) of numpy arrays.
+            shuffle (bool): Whether to shuffle the data.
+        
+        Returns:
+            DataLoader: A DataLoader wrapping the dataset.
+        """
+        X, y = data_split
+        X_tensor = torch.tensor(X, dtype=torch.float32)
+        if self.task_type == "classification":
+            # Ensure that target labels are of integer type.
+            y_tensor = torch.tensor(y, dtype=torch.long)
+        else:
+            y_tensor = torch.tensor(y, dtype=torch.float32)
+        dataset = TensorDataset(X_tensor, y_tensor)
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
+        return loader
+
+    def _train_epoch(self, train_loader: DataLoader) -> float:
+        """
+        Execute one training epoch over the training data.
+        
+        Args:
+            train_loader (DataLoader): DataLoader for the training split.
+        
+        Returns:
+            float: Average training loss for the epoch.
+        """
+        self.model.train()
+        epoch_loss: float = 0.0
+        total_samples: int = 0
+
+        for X_batch, y_batch in train_loader:
+            X_batch = X_batch.to(self.device)
+            y_batch = y_batch.to(self.device)
+            self.optimizer.zero_grad()
+
+            outputs = self.model(X_batch)
+            if self.task_type == "classification":
+                loss = self.criterion(outputs, y_batch)
+            else:
+                # For regression, squeeze outputs if necessary.
+                loss = self.criterion(outputs.squeeze(), y_batch)
+            loss.backward()
+            self.optimizer.step()
+
+            batch_size_current: int = X_batch.size(0)
+            epoch_loss += loss.item() * batch_size_current
+            total_samples += batch_size_current
+
+        average_loss: float = epoch_loss / total_samples if total_samples > 0 else 0.0
+        return average_loss
+
+    def _validate(self, val_loader: DataLoader) -> float:
+        """
+        Evaluate the model on the validation set and compute the validation metric.
+        
+        Args:
+            val_loader (DataLoader): DataLoader for the validation split.
+        
+        Returns:
+            float: The computed validation metric (RMSE for regression, accuracy for classification).
+        """
+        self.model.eval()
+        all_outputs = []
+        all_targets = []
+
+        with torch.no_grad():
+            for X_batch, y_batch in val_loader:
+                X_batch = X_batch.to(self.device)
+                y_batch = y_batch.to(self.device)
+                outputs = self.model(X_batch)
+                if self.task_type == "regression":
+                    outputs = outputs.squeeze()
+                all_outputs.append(outputs.cpu())
+                all_targets.append(y_batch.cpu())
+
+        predictions = torch.cat(all_outputs, dim=0)
+        targets = torch.cat(all_targets, dim=0)
+        if self.task_type == "regression":
+            metric = compute_rmse(predictions, targets)
+        else:
+            metric = compute_accuracy(predictions, targets)
+        return metric
+
+    def train(self) -> float:
+        """
+        Execute the full training loop with early stopping.
+        
+        Returns:
+            float: The best validation metric achieved by the model.
+                   (RMSE for regression; accuracy for classification)
+        """
+        train_loader = self._create_dataloader(self.data.train, shuffle=True)
+        val_loader = self._create_dataloader(self.data.val, shuffle=False)
+
+        best_metric: float = self.best_metric
+
+        for epoch in range(1, self.max_epochs + 1):
+            start_time = time.time()
+            train_loss = self._train_epoch(train_loader)
+            val_metric = self._validate(val_loader)
+            epoch_duration = time.time() - start_time
+
+            self.logger.info(
+                f"Epoch {epoch}/{self.max_epochs} - Train Loss: {train_loss:.4f} - Val Metric: {val_metric:.4f} - Duration: {epoch_duration:.2f}s"
+            )
+
+            # Determine if the current epoch shows improvement.
+            improved = False
+            if self.task_type == "regression":
+                if val_metric < best_metric:
+                    improved = True
+            else:
+                if val_metric > best_metric:
+                    improved = True
+
+            if improved:
+                best_metric = val_metric
+                self.best_epoch = epoch
+                self.early_stop_counter = 0
+                self.save_model()
+                self.logger.info(f"Epoch {epoch}: New best model found with metric {val_metric:.4f}. Checkpoint saved.")
+            else:
+                self.early_stop_counter += 1
+                self.logger.info(f"Epoch {epoch}: No improvement. Early stop counter: {self.early_stop_counter}.")
+
+            if self.early_stop_counter >= self.patience:
+                self.logger.info(
+                    f"Early stopping activated. Stopping training at epoch {epoch}. Best metric: {best_metric:.4f} achieved at epoch {self.best_epoch}."
+                )
+                break
+
+        # Load the best model checkpoint.
+        if os.path.exists(self.checkpoint_path):
+            self.model.load_state_dict(torch.load(self.checkpoint_path, map_location=self.device))
+            self.logger.info(f"Best model loaded from checkpoint: {self.checkpoint_path}.")
+        else:
+            self.logger.warning("Checkpoint file not found. Using current model state.")
+
+        return best_metric
+
+    def save_model(self) -> None:
+        """
+        Save the current model's state dictionary to the checkpoint file.
+        """
+        torch.save(self.model.state_dict(), self.checkpoint_path)
+        self.logger.info(f"Model checkpoint saved to {self.checkpoint_path}.")
+        
+# End of trainer.py
+```
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] trainer.py
+🛠️ Model: o3-mini
+📥 Input tokens: 4172 (Cost: $0.00458920)
+📦 Cached input tokens: 34688 (Cost: $0.01907840)
+📤 Output tokens: 6889 (Cost: $0.03031160)
+💵 Current total cost: $0.05397920
+🪙 Accumulated total cost so far: $0.63476160
+============================================
+
+[CODING] evaluation.py
+============================================
+ 86%|████████▌ | 6/7 [02:58<00:30, 30.51s/it]```python
+"""evaluation.py
+
+This module implements the Evaluator class which is responsible for evaluating trained
+backbone models (or ensembles of models) on the validation and test splits provided
+in a DataBundle. Evaluation metrics (accuracy for classification or RMSE for regression)
+are computed, and if multiple models are provided the Evaluator groups them into ensembles,
+averages their predictions, and reports both the group-wise metrics as well as the overall
+mean and standard deviation. Additionally, the total parameter count of a representative
+model is computed for comparison purposes.
+
+Usage:
+    from evaluation import Evaluator
+    evaluator = Evaluator(model, data_bundle, config)
+    results = evaluator.evaluate()
+    print(results)
+    
+Dependencies:
+    - torch, numpy, logging, and standard typing modules.
+    - DataBundle from dataset_loader.py.
+    - Utility functions (set_seed, compute_accuracy, compute_rmse, get_logger, count_parameters)
+      from utils.py.
+    - Configuration is provided via config.py.
+"""
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+import torch.nn.functional as F
+import numpy as np
+from typing import Any, Dict, List, Union, Tuple
+import logging
+
+from dataset_loader import DataBundle
+from config import get_seed  # Use to set seeds if needed
+from utils import compute_accuracy, compute_rmse, get_logger, count_parameters, set_seed
+
+class Evaluator:
+    """
+    Evaluator class for computing performance metrics on the validation and test splits.
+    
+    Attributes:
+        model (Union[nn.Module, List[nn.Module]]): A single backbone model or list of models (ensemble).
+        data (DataBundle): DataBundle containing split datasets (train, val, test).
+        config (Dict[str, Any]): Configuration dictionary loaded from config.yaml.
+        task_type (str): "classification" or "regression", determined from training targets.
+        batch_size (int): Batch size used for evaluation.
+        ensemble_groups (int): Number of ensemble groups if multiple models are provided.
+        num_seeds (int): Expected number of independent runs (models).
+        device (torch.device): Device on which computations are performed.
+        logger (logging.Logger): Logger for recording progress.
+    """
+    def __init__(
+        self,
+        model: Union[nn.Module, List[nn.Module]],
+        data: DataBundle,
+        config: Dict[str, Any]
+    ) -> None:
+        """
+        Initialize the Evaluator.
+        
+        Args:
+            model (Union[nn.Module, List[nn.Module]]): A single model or a list of models.
+            data (DataBundle): DataBundle containing train, validation, and test splits.
+            config (Dict[str, Any]): The experiment configuration dictionary.
+        """
+        self.model = model
+        self.data = data
+        self.config = config
+
+        # Set random seed for reproducibility
+        set_seed(get_seed())
+
+        # Determine evaluation batch size from training configuration.
+        self.batch_size: int = config.get("training", {}).get("batch_size", 128)
+        
+        # Determine ensemble group details from evaluation config.
+        eval_config: Dict[str, Any] = config.get("evaluation", {})
+        self.num_seeds: int = eval_config.get("num_seeds", 15)
+        self.ensemble_groups: int = eval_config.get("ensemble_groups", 3)
+        
+        # Determine task type based on training target unique values.
+        # Use training split targets in DataBundle.
+        train_targets = self.data.train[1]
+        unique_targets = np.unique(train_targets)
+        # If there are 10 or fewer unique targets, treat as classification.
+        self.task_type: str = "classification" if len(unique_targets) <= 10 else "regression"
+
+        # Set up device.
+        self.device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # If model is single, move to device; if list, move each to device.
+        if isinstance(self.model, list):
+            for mdl in self.model:
+                mdl.to(self.device)
+        else:
+            self.model.to(self.device)
+
+        # Set logger.
+        self.logger: logging.Logger = get_logger("Evaluator")
+        self.logger.info(f"Evaluator initialized on device: {self.device} for {self.task_type} task.")
+
+    def _create_dataloader(self, data_split: Tuple[np.ndarray, np.ndarray], shuffle: bool = False) -> DataLoader:
+        """
+        Create a DataLoader from a data split.
+        
+        Args:
+            data_split (Tuple[np.ndarray, np.ndarray]): Tuple containing (X, y).
+            shuffle (bool): Whether to shuffle the data.
+        
+        Returns:
+            DataLoader: DataLoader wrapping the dataset.
+        """
+        X, y = data_split
+        X_tensor = torch.tensor(X, dtype=torch.float32)
+        if self.task_type == "classification":
+            y_tensor = torch.tensor(y, dtype=torch.long)
+        else:
+            y_tensor = torch.tensor(y, dtype=torch.float32)
+        dataset = TensorDataset(X_tensor, y_tensor)
+        return DataLoader(dataset, batch_size=self.batch_size, shuffle=shuffle)
+
+    def _evaluate_single_model(self, model: nn.Module, data_split: Tuple[np.ndarray, np.ndarray]) -> float:
+        """
+        Evaluate a single model on a given data split.
+        
+        Args:
+            model (nn.Module): The backbone model to evaluate.
+            data_split (Tuple[np.ndarray, np.ndarray]): Tuple containing (X, y).
+            
+        Returns:
+            float: Computed metric (accuracy for classification or RMSE for regression).
+        """
+        model.eval()
+        dataloader = self._create_dataloader(data_split, shuffle=False)
+        all_preds: List[torch.Tensor] = []
+        all_targets: List[torch.Tensor] = []
+        
+        with torch.no_grad():
+            for X_batch, y_batch in dataloader:
+                X_batch = X_batch.to(self.device)
+                outputs = model(X_batch)
+                if self.task_type == "classification":
+                    # For classification, apply softmax to logits.
+                    outputs = torch.softmax(outputs, dim=1)
+                else:
+                    outputs = outputs.squeeze()
+                all_preds.append(outputs.cpu())
+                all_targets.append(y_batch)
+        
+        predictions = torch.cat(all_preds, dim=0)
+        targets = torch.cat(all_targets, dim=0)
+        if self.task_type == "classification":
+            metric: float = compute_accuracy(predictions, targets)
+        else:
+            metric = compute_rmse(predictions, targets)
+        return metric
+
+    def _evaluate_ensemble(self, data_split: Tuple[np.ndarray, np.ndarray]) -> Tuple[List[float], float]:
+        """
+        Evaluate an ensemble of models grouped into ensemble groups on a given data split.
+        
+        The models are split into groups as specified by self.ensemble_groups,
+        and for each group the predictions are averaged per sample; the metric is then computed.
+        
+        Args:
+            data_split (Tuple[np.ndarray, np.ndarray]): Tuple containing (X, y).
+        
+        Returns:
+            Tuple[List[float], float]: A tuple with a list of group metrics and the overall mean metric.
+        """
+        dataloader = self._create_dataloader(data_split, shuffle=False)
+        # Convert dataloader to list so that we can iterate multiple times.
+        data_batches = list(dataloader)
+        
+        # Aggregate true labels from the batches.
+        true_labels_list: List[torch.Tensor] = []
+        for _, y_batch in data_batches:
+            true_labels_list.append(y_batch)
+        # Concatenate true labels.
+        true_labels = torch.cat(true_labels_list, dim=0)
+        
+        # Determine group size.
+        total_models = len(self.model)
+        group_size = total_models // self.ensemble_groups
+        group_metrics: List[float] = []
+        
+        for group_idx in range(self.ensemble_groups):
+            # Get models in the current ensemble group.
+            group_models = self.model[group_idx * group_size : (group_idx + 1) * group_size]
+            # Ensure each model in group is in eval mode.
+            for mdl in group_models:
+                mdl.eval()
+            group_preds_batches: List[torch.Tensor] = []
+            
+            with torch.no_grad():
+                # Iterate over stored batches.
+                for X_batch, _ in data_batches:
+                    X_batch = X_batch.to(self.device)
+                    batch_model_preds: List[torch.Tensor] = []
+                    # Compute predictions for each model in the group.
+                    for mdl in group_models:
+                        outputs = mdl(X_batch)
+                        if self.task_type == "classification":
+                            # For classification, average softmax probabilities.
+                            outputs = torch.softmax(outputs, dim=1)
+                        else:
+                            outputs = outputs.squeeze()
+                        batch_model_preds.append(outputs.cpu())
+                    # Average predictions for the current batch over models.
+                    batch_avg_pred = torch.stack(batch_model_preds, dim=0).mean(dim=0)
+                    group_preds_batches.append(batch_avg_pred)
+            
+            # Concatenate averaged predictions for the entire dataset.
+            group_preds = torch.cat(group_preds_batches, dim=0)
+            # Compute metric for the group.
+            if self.task_type == "classification":
+                group_metric = compute_accuracy(group_preds, true_labels)
+            else:
+                group_metric = compute_rmse(group_preds, true_labels)
+            group_metrics.append(group_metric)
+            self.logger.info(f"Ensemble group {group_idx + 1} metric: {group_metric:.4f}")
+        
+        overall_metric = float(np.mean(group_metrics))
+        return group_metrics, overall_metric
+
+    def evaluate(self) -> Dict[str, Any]:
+        """
+        Evaluate the model(s) on both the validation and test splits.
+        
+        For single model evaluation, metrics are computed directly.
+        For ensemble evaluation (multiple models), predictions are averaged within ensemble groups.
+        Additionally, the parameter count (from one representative model) is computed.
+        
+        Returns:
+            Dict[str, Any]: Dictionary containing metrics for validation and test splits.
+                For example:
+                {
+                    "validation": {
+                        "accuracy": 0.87,         (or "RMSE": 3.14)
+                        "parameter_count": 123456
+                    },
+                    "test": {
+                        "accuracy": 0.85,         (or "RMSE": 3.20)
+                        "parameter_count": 123456
+                    },
+                    "ensemble_details": {
+                        "validation_group_metrics": [0.86, 0.87, 0.88],
+                        "validation_mean": 0.87,
+                        "validation_std": 0.01,
+                        "test_group_metrics": [0.84, 0.85, 0.83],
+                        "test_mean": 0.84,
+                        "test_std": 0.01
+                    }
+                }
+        """
+        results: Dict[str, Any] = {}
+        # Compute parameter count from one representative model.
+        if isinstance(self.model, list):
+            representative_model = self.model[0]
+        else:
+            representative_model = self.model
+        param_count = count_parameters(representative_model)
+        
+        # Define split names and corresponding data.
+        splits: Dict[str, Tuple[np.ndarray, np.ndarray]] = {
+            "validation": self.data.val,
+            "test": self.data.test
+        }
+        
+        # Determine metric key based on task type.
+        metric_key = "accuracy" if self.task_type == "classification" else "RMSE"
+        ensemble_details: Dict[str, Any] = {}
+
+        for split_name, split_data in splits.items():
+            self.logger.info(f"Evaluating on {split_name} split...")
+            if isinstance(self.model, list):
+                # Ensemble evaluation: split models into groups.
+                group_metrics, overall_metric = self._evaluate_ensemble(split_data)
+                results[split_name] = {
+                    metric_key: overall_metric,
+                    "parameter_count": param_count
+                }
+                ensemble_details[f"{split_name}_group_metrics"] = group_metrics
+                ensemble_details[f"{split_name}_mean"] = float(np.mean(group_metrics))
+                ensemble_details[f"{split_name}_std"] = float(np.std(group_metrics))
+            else:
+                # Single model evaluation.
+                metric_value = self._evaluate_single_model(self.model, split_data)
+                results[split_name] = {
+                    metric_key: metric_value,
+                    "parameter_count": param_count
+                }
+        
+        results["ensemble_details"] = ensemble_details
+        # Log final results.
+        self.logger.info(f"Final evaluation results: {results}")
+        return results
+
+# End of evaluation.py
+```100%|██████████| 7/7 [03:25<00:00, 29.31s/it]100%|██████████| 7/7 [03:25<00:00, 29.37s/it]
+
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] evaluation.py
+🛠️ Model: o3-mini
+📥 Input tokens: 4634 (Cost: $0.00509740)
+📦 Cached input tokens: 36736 (Cost: $0.02020480)
+📤 Output tokens: 8133 (Cost: $0.03578520)
+💵 Current total cost: $0.06108740
+🪙 Accumulated total cost so far: $0.69584900
+============================================
+
+[CODING] main.py
+============================================
+```python
+"""main.py
+
+This file is the entry point of the application. It orchestrates the entire experimental
+pipeline: loading configuration, setting random seeds, loading and preprocessing data,
+constructing the model (with numerical feature embedding modules), training via a Trainer,
+and evaluating via an Evaluator (including ensemble evaluation).
+
+The pipeline follows the design and methodology described in "On Embeddings for Numerical
+Features in Tabular Deep Learning", ensuring reproducibility using configuration from config.yaml.
+
+Usage:
+    python main.py
+"""
+
+import os
+import torch
+import numpy as np
+from typing import List, Dict, Any
+
+# Import configuration and utilities.
+from config import CONFIG, get_seed
+from utils import set_seed
+
+# Import dataset loader and data bundle.
+from dataset_loader import DatasetLoader, DataBundle
+
+# Import model components.
+from model import BackboneModel, PLEEmbedding, PeriodicEmbedding
+
+# Import Trainer and Evaluator.
+from trainer import Trainer
+from evaluation import Evaluator
+
+
+def build_embeddings(num_features: int, config_dict: Dict[str, Any]) -> List[torch.nn.Module]:
+    """
+    Build a list of embedding modules (one per numerical feature) based on the configuration.
+
+    If the configuration specifies a PLE embedding (using "ple" key), then instantiate PLEEmbedding
+    for each feature. Otherwise, use the PeriodicEmbedding module.
+
+    Args:
+        num_features (int): Number of numerical features to create embeddings for.
+        config_dict (Dict[str, Any]): The full configuration dictionary.
+
+    Returns:
+        List[torch.nn.Module]: List of instantiated embedding modules.
+    """
+    embeddings: List[torch.nn.Module] = []
+    embeddings_config: Dict[str, Any] = config_dict.get("embeddings", {})
+    # Check if PLE embedding is to be used.
+    if "ple" in embeddings_config:
+        ple_config: Dict[str, Any] = embeddings_config.get("ple", {})
+        ple_method: str = ple_config.get("method", "quantile")
+        # Determine the number of bins.
+        # Use a default bins value; here we choose 10 as a reasonable default.
+        bins_default: int = 10
+        # For quantile-based PLE, quantile_bins_range is provided as a range, so we take the lower bound.
+        quantile_bins_range: List[int] = ple_config.get("quantile_bins_range", [2, 256])
+        bins: int = bins_default  # You may change this to quantile_bins_range[0] if desired.
+        # For each feature, create a boundaries tensor using linspace from 0.0 to 1.0.
+        # This works because QuantileTransformer outputs values in [0, 1].
+        boundaries_tensor: torch.Tensor = torch.linspace(0.0, 1.0, steps=bins + 1)
+        # Define embedding output dimension; default to 32.
+        embedding_dim: int = 32
+        for _ in range(num_features):
+            ple_embedding = PLEEmbedding(
+                bins=bins,
+                method=ple_method,
+                embedding_dim=embedding_dim,
+                boundaries=boundaries_tensor
+            )
+            embeddings.append(ple_embedding)
+    else:
+        # Otherwise, use PeriodicEmbedding.
+        periodic_config: Dict[str, Any] = embeddings_config.get("periodic", {})
+        k_range: List[Any] = periodic_config.get("k_range", [1, 128])
+        # Choose default k as the midpoint of k_range.
+        k_default: int = (int(k_range[0]) + int(k_range[1])) // 2 if k_range else 64
+        sigma: float = periodic_config.get("sigma", 0.1)
+        embedding_dim: int = 32
+        for _ in range(num_features):
+            periodic_embedding = PeriodicEmbedding(
+                k=k_default,
+                sigma=sigma,
+                embedding_dim=embedding_dim
+            )
+            embeddings.append(periodic_embedding)
+    return embeddings
+
+
+def build_backbone_model(num_features: int, embeddings: List[torch.nn.Module], config_dict: Dict[str, Any]) -> BackboneModel:
+    """
+    Build the backbone model using the provided embeddings and backbone parameters specified in the configuration.
+
+    Currently, the default backbone type is "mlp" as specified in config under "backbone" -> "mlp".
+
+    Args:
+        num_features (int): Number of features (number of embedding modules).
+        embeddings (List[torch.nn.Module]): List of per-feature embedding modules.
+        config_dict (Dict[str, Any]): Full configuration dictionary.
+
+    Returns:
+        BackboneModel: The instantiated backbone model.
+    """
+    backbone_section: Dict[str, Any] = config_dict.get("backbone", {})
+    # Default to using the "mlp" backbone if available.
+    mlp_config: Dict[str, Any] = backbone_section.get("mlp", {})
+    # Build backbone parameters, ensuring defaults.
+    backbone_params: Dict[str, Any] = {
+        "type": "mlp",
+        "num_layers": mlp_config.get("num_layers", 4),
+        "layer_size": mlp_config.get("layer_size", 256),
+        "output_dim": 1  # Default to output dimension 1 (e.g., for regression tasks)
+    }
+    # Instantiate BackboneModel.
+    model_instance: BackboneModel = BackboneModel(embeddings=embeddings, params=backbone_params)
+    return model_instance
+
+
+def main() -> None:
+    """
+    Main function that orchestrates the experimental pipeline:
+      1. Load configuration and set base random seed.
+      2. Load and preprocess data via DatasetLoader.
+      3. Build embedding modules and backbone model.
+      4. Train the model using Trainer over multiple seeds to form an ensemble.
+      5. Evaluate the ensemble using Evaluator and output final metrics.
+    """
+    # Load configuration from config.yaml via CONFIG.
+    config_dict: Dict[str, Any] = CONFIG  # Already loaded by config.py
+    base_seed: int = get_seed()  # Default base seed from config
+    num_evaluation_seeds: int = config_dict.get("evaluation", {}).get("num_seeds", 15)
+
+    print("Starting experiment with configuration:")
+    print(config_dict)
+
+    # Load dataset once to use fixed data splits for ensemble evaluation.
+    dataset_path: str = os.path.join("data", "dataset.csv")
+    target_column: str = "target"  # Default target column name
+    dataset_loader: DatasetLoader = DatasetLoader(config=config_dict, dataset_path=dataset_path, target_column=target_column)
+    data_bundle: DataBundle = dataset_loader.load_data()
+    # Determine number of features from training data.
+    X_train, _ = data_bundle.train
+    num_features: int = X_train.shape[1]
+    print(f"Data loaded. Number of training samples: {X_train.shape[0]}; Number of features: {num_features}")
+
+    # List to collect trained models for ensemble evaluation.
+    ensemble_models: List[torch.nn.Module] = []
+
+    # Loop over the number of seeds specified for evaluation.
+    for seed_index in range(num_evaluation_seeds):
+        # Set a new seed by incrementing the base seed.
+        new_seed: int = base_seed + seed_index
+        config_dict["seed"] = new_seed  # Update global configuration seed.
+        set_seed(new_seed)
+        print(f"\nStarting training run {seed_index + 1}/{num_evaluation_seeds} with seed {new_seed}.")
+
+        # Build embedding modules for each feature.
+        embeddings: List[torch.nn.Module] = build_embeddings(num_features, config_dict)
+
+        # Build the backbone model (default: mlp).
+        model: BackboneModel = build_backbone_model(num_features, embeddings, config_dict)
+
+        # Initialize Trainer with the model, data, and full configuration.
+        trainer: Trainer = Trainer(model=model, data=data_bundle, config=config_dict)
+        best_val_metric: float = trainer.train()
+        print(f"Run {seed_index + 1} completed. Best validation metric: {best_val_metric:.4f}")
+
+        # Append the trained model to the ensemble list.
+        ensemble_models.append(model)
+
+    # Ensemble evaluation using the list of trained models.
+    evaluator: Evaluator = Evaluator(model=ensemble_models, data=data_bundle, config=config_dict)
+    eval_results: Dict[str, Any] = evaluator.evaluate()
+    print("\nFinal Evaluation Results:")
+    print(eval_results)
+
+
+if __name__ == "__main__":
+    main()
+```
+============================================
+
+🌟 Usage Summary 🌟
+[CODING] main.py
+🛠️ Model: o3-mini
+📥 Input tokens: 5148 (Cost: $0.00566280)
+📦 Cached input tokens: 38784 (Cost: $0.02133120)
+📤 Output tokens: 6461 (Cost: $0.02842840)
+💵 Current total cost: $0.05542240
+🪙 Accumulated total cost so far: $0.75127140
+============================================
+

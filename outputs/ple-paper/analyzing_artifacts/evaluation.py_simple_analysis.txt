@@ -1,0 +1,121 @@
+Below is a detailed logic analysis for evaluation.py. This document outlines how the Evaluator class should work, what inputs it will receive (a trained model or multiple trained models for ensemble evaluation and a DataBundle from the dataset loader), and how it will compute and aggregate performance metrics based on the experimental protocols described in the paper. Use this analysis as a blueprint for writing the actual code.
+
+────────────────────────────
+1. Overall Responsibility of Evaluator
+
+• The Evaluator class’s main role is to:
+  – Load one or more trained (backbone) models.
+  – Compute evaluation metrics on the validation and test splits of the data.
+  – Aggregate ensemble predictions if evaluation involves multiple runs.
+  – Report summary metrics such as accuracy (for classification) or RMSE (for regression) along with the model’s parameter count.
+  – Work in “evaluation mode” (i.e. with torch.no_grad() and model.eval()) so that gradients are not computed.
+  – Depend on the DataBundle (containing train, validation, and test sets) provided by the DatasetLoader.
+  – Rely on configuration settings (from config.yaml via config.py and the loaded config dictionary) for details such as:
+   • Which metric to compute (accuracy for classification, RMSE for regression).
+   • Number of ensemble groups (the plan says 15 runs should be split into three groups).
+   • Batch size values and other evaluation-related parameters.
+
+────────────────────────────
+2. Inputs / Initialization
+
+• The Evaluator class’s __init__() method should accept:
+  – model(s): either a single BackboneModel or a list (e.g. 15 models representing different random seeds).
+  – data: a DataBundle object that contains already preprocessed splits for validation and test.
+  – config: a configuration dictionary (derived from config.py, which in turn reads config.yaml) that provides details including evaluation metrics, the number of seeds, ensemble group count, etc.
+
+• The configuration will supply:
+  – evaluation.metrics (with keys “classification” and “regression”).
+  – evaluation.num_seeds (e.g. 15) and ensemble_groups (e.g. 3), so that if multiple models are provided the Evaluator knows how to group and average predictions.
+
+────────────────────────────
+3. Evaluation Procedure (evaluate() Method)
+
+A. Setup and Mode
+
+ 1. Before evaluating, set the model(s) to evaluation mode by calling model.eval() or, if you have multiple models, set each one with eval().
+ 2. Wrap evaluation in a torch.no_grad() context to avoid computing gradients and to improve speed.
+
+B. Data Loop
+
+ 1. For each split (validation and test) in the DataBundle:
+   a. Loop over the data in batches (using the provided or default batch size from config).
+   b. For each batch:
+    – Get the input features (numerical and categorical after preprocessing).
+    – Pass inputs through the model (or each model if using an ensemble) by calling model.forward(x).
+    – Collect both the raw outputs (logits or regression predictions) and the true labels.
+
+C. Metric Computation
+
+ 1. Determine if the task is classification or regression. This can either be inferred from the config (e.g., compare config.evaluation.metrics value) or by examining the dimensionality/type of the target.
+ 2. For classification:
+   – For each model’s output, convert logits to probabilities using a softmax (if the network output has not already been converted to probabilities).
+   – If using an ensemble (multiple models), aggregate predictions by averaging the softmax probabilities for each sample.
+   – Final predictions are obtained by taking argmax over the averaged probabilities.
+   – Compute accuracy by comparing predicted labels with the true labels.
+ 3. For regression:
+   – For each model’s output, simply obtain the scalar prediction for each sample.
+   – If evaluating several models as an ensemble, average the predictions across models on a per‑sample basis.
+   – Compute RMSE as the square root of the mean squared error between predicted and true values.
+
+D. Ensemble Aggregation (if Multiple Models Provided)
+
+ 1. If a list of models is given (e.g. 15 individual models):
+   – Use the configuration value “ensemble_groups” (e.g. 3) to split the list into disjoint groups (for instance, grouping every 5 models together).
+   – For each ensemble group:
+    a. For every data batch, run the forward pass with each model in the group.
+    b. Average the predictions from the 5 models on a per-sample basis.
+    c. Compute the corresponding metric (accuracy for classification; RMSE for regression) for that group.
+ 2. Aggregate the group metrics (for example, by computing the average metric across the 3 groups) to arrive at a final ensemble performance measure.
+ 3. Optionally, also compute and report the standard deviation across these ensemble groups, as the paper emphasizes both mean performance and variability.
+
+E. Parameter Count
+
+ 1. Compute the total number of trainable parameters in the (backbone) model. This is useful for comparing overhead introduced by embedding modules.
+ 2. Even in ensemble evaluation (with multiple runs), the parameter count can be reported based on one representative model since each run has the same architecture.
+
+────────────────────────────
+4. Output Format
+
+• The evaluate() method should return a Python dictionary containing summary metrics for the evaluated split(s). For example, the dictionary might have keys such as:
+  – "validation": { "accuracy" or "RMSE": value, "parameter_count": value }
+  – "test": { "accuracy" or "RMSE": value, "parameter_count": value }
+  – If ensemble evaluation is done, additional keys might include metrics for each ensemble group as well as the overall average and standard deviation.
+
+• The Evaluator should also print or log these results so that the MainApp (or the calling script) can present the final performance.
+
+────────────────────────────
+5. Dependencies and Integration
+
+• The Evaluator should import necessary parts from model.py (e.g., the BackboneModel and any methods needed for applying forward pass to embedding modules) and dataset_loader.py (DataBundle structure).
+• It should also use utility functions (from utils.py) for:
+  – Setting random seeds (if needed, although that may be performed earlier in the pipeline).
+  – Calculating metrics (you may define helper functions such as compute_accuracy() and compute_rmse() to cleanly separate metric logic).
+  – Parameter counting (e.g., summing model.parameters()’ numel() for p in model.parameters() if p.requires_grad).
+
+────────────────────────────
+6. Considerations Specific to the Paper and Implementation Design
+
+• The evaluation method must strictly adhere to the protocols described in the paper:
+  – Use the same batch sizes (as provided in the config or dataset-specific overrides).
+  – Report both mean performance and standard deviation (across different random seeds or ensemble groups).
+  – For classification tasks, ensure that the averaging of predictions is done over softmax outputs, not just logits.
+  – For regression tasks, ensure that the averaging is done on scalar predictions.
+• While the design calls for the Evaluator to be “responsible for aggregating ensemble predictions,” keep the API simple by letting the __init__ accept either a single model or a list of models. Then, based on the data type (or a flag in config), decide whether to run single-model evaluation or grouped ensemble averaging.
+• Always reference configuration values from the config (e.g., early_stopping_patience, evaluation.num_seeds, evaluation.ensemble_groups) to remain consistent and reproducible.
+
+────────────────────────────
+7. Summary of the Evaluation Logic
+
+• Initialize Evaluator with a model (or list of models), a DataBundle (with train/val/test splits), and the config.
+• In evaluate():
+  – Set the model(s) to eval mode and disable gradients.
+  – For each of the validation and test splits:
+   o Loop over data batches and run the forward pass.
+   o For classification: apply softmax, average predictions (if ensemble), compute argmax, and then accuracy.
+   o For regression: average predictions (ensemble if applicable), then compute RMSE.
+  – Use helper functions from utils.py as needed.
+  – Compute and include model parameter count in the output.
+  – If evaluating ensembles, group models based on the provided number of ensemble groups (e.g., 3 groups of 5 each) and calculate both group-level and overall averaged metrics.
+• Return and log a dictionary summarizing these metrics.
+
+By following this logic analysis closely in evaluation.py, you'll ensure that the evaluation procedures are clear, consistent with the paper’s methodology, and integrated with the rest of the modular codebase.

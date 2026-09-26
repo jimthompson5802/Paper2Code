@@ -1,0 +1,181 @@
+"""main.py
+
+This file is the entry point of the application. It orchestrates the entire experimental
+pipeline: loading configuration, setting random seeds, loading and preprocessing data,
+constructing the model (with numerical feature embedding modules), training via a Trainer,
+and evaluating via an Evaluator (including ensemble evaluation).
+
+The pipeline follows the design and methodology described in "On Embeddings for Numerical
+Features in Tabular Deep Learning", ensuring reproducibility using configuration from config.yaml.
+
+Usage:
+    python main.py
+"""
+
+import os
+import torch
+import numpy as np
+from typing import List, Dict, Any
+
+# Import configuration and utilities.
+from config import CONFIG, get_seed
+from utils import set_seed
+
+# Import dataset loader and data bundle.
+from dataset_loader import DatasetLoader, DataBundle
+
+# Import model components.
+from model import BackboneModel, PLEEmbedding, PeriodicEmbedding
+
+# Import Trainer and Evaluator.
+from trainer import Trainer
+from evaluation import Evaluator
+
+
+def build_embeddings(num_features: int, config_dict: Dict[str, Any]) -> List[torch.nn.Module]:
+    """
+    Build a list of embedding modules (one per numerical feature) based on the configuration.
+
+    If the configuration specifies a PLE embedding (using "ple" key), then instantiate PLEEmbedding
+    for each feature. Otherwise, use the PeriodicEmbedding module.
+
+    Args:
+        num_features (int): Number of numerical features to create embeddings for.
+        config_dict (Dict[str, Any]): The full configuration dictionary.
+
+    Returns:
+        List[torch.nn.Module]: List of instantiated embedding modules.
+    """
+    embeddings: List[torch.nn.Module] = []
+    embeddings_config: Dict[str, Any] = config_dict.get("embeddings", {})
+    # Check if PLE embedding is to be used.
+    if "ple" in embeddings_config:
+        ple_config: Dict[str, Any] = embeddings_config.get("ple", {})
+        ple_method: str = ple_config.get("method", "quantile")
+        # Determine the number of bins.
+        # Use a default bins value; here we choose 10 as a reasonable default.
+        bins_default: int = 10
+        # For quantile-based PLE, quantile_bins_range is provided as a range, so we take the lower bound.
+        quantile_bins_range: List[int] = ple_config.get("quantile_bins_range", [2, 256])
+        bins: int = bins_default  # You may change this to quantile_bins_range[0] if desired.
+        # For each feature, create a boundaries tensor using linspace from 0.0 to 1.0.
+        # This works because QuantileTransformer outputs values in [0, 1].
+        boundaries_tensor: torch.Tensor = torch.linspace(0.0, 1.0, steps=bins + 1)
+        # Define embedding output dimension; default to 32.
+        embedding_dim: int = 32
+        for _ in range(num_features):
+            ple_embedding = PLEEmbedding(
+                bins=bins,
+                method=ple_method,
+                embedding_dim=embedding_dim,
+                boundaries=boundaries_tensor
+            )
+            embeddings.append(ple_embedding)
+    else:
+        # Otherwise, use PeriodicEmbedding.
+        periodic_config: Dict[str, Any] = embeddings_config.get("periodic", {})
+        k_range: List[Any] = periodic_config.get("k_range", [1, 128])
+        # Choose default k as the midpoint of k_range.
+        k_default: int = (int(k_range[0]) + int(k_range[1])) // 2 if k_range else 64
+        sigma: float = periodic_config.get("sigma", 0.1)
+        embedding_dim: int = 32
+        for _ in range(num_features):
+            periodic_embedding = PeriodicEmbedding(
+                k=k_default,
+                sigma=sigma,
+                embedding_dim=embedding_dim
+            )
+            embeddings.append(periodic_embedding)
+    return embeddings
+
+
+def build_backbone_model(num_features: int, embeddings: List[torch.nn.Module], config_dict: Dict[str, Any]) -> BackboneModel:
+    """
+    Build the backbone model using the provided embeddings and backbone parameters specified in the configuration.
+
+    Currently, the default backbone type is "mlp" as specified in config under "backbone" -> "mlp".
+
+    Args:
+        num_features (int): Number of features (number of embedding modules).
+        embeddings (List[torch.nn.Module]): List of per-feature embedding modules.
+        config_dict (Dict[str, Any]): Full configuration dictionary.
+
+    Returns:
+        BackboneModel: The instantiated backbone model.
+    """
+    backbone_section: Dict[str, Any] = config_dict.get("backbone", {})
+    # Default to using the "mlp" backbone if available.
+    mlp_config: Dict[str, Any] = backbone_section.get("mlp", {})
+    # Build backbone parameters, ensuring defaults.
+    backbone_params: Dict[str, Any] = {
+        "type": "mlp",
+        "num_layers": mlp_config.get("num_layers", 4),
+        "layer_size": mlp_config.get("layer_size", 256),
+        "output_dim": 1  # Default to output dimension 1 (e.g., for regression tasks)
+    }
+    # Instantiate BackboneModel.
+    model_instance: BackboneModel = BackboneModel(embeddings=embeddings, params=backbone_params)
+    return model_instance
+
+
+def main() -> None:
+    """
+    Main function that orchestrates the experimental pipeline:
+      1. Load configuration and set base random seed.
+      2. Load and preprocess data via DatasetLoader.
+      3. Build embedding modules and backbone model.
+      4. Train the model using Trainer over multiple seeds to form an ensemble.
+      5. Evaluate the ensemble using Evaluator and output final metrics.
+    """
+    # Load configuration from config.yaml via CONFIG.
+    config_dict: Dict[str, Any] = CONFIG  # Already loaded by config.py
+    base_seed: int = get_seed()  # Default base seed from config
+    num_evaluation_seeds: int = config_dict.get("evaluation", {}).get("num_seeds", 15)
+
+    print("Starting experiment with configuration:")
+    print(config_dict)
+
+    # Load dataset once to use fixed data splits for ensemble evaluation.
+    dataset_path: str = os.path.join("data", "dataset.csv")
+    target_column: str = "target"  # Default target column name
+    dataset_loader: DatasetLoader = DatasetLoader(config=config_dict, dataset_path=dataset_path, target_column=target_column)
+    data_bundle: DataBundle = dataset_loader.load_data()
+    # Determine number of features from training data.
+    X_train, _ = data_bundle.train
+    num_features: int = X_train.shape[1]
+    print(f"Data loaded. Number of training samples: {X_train.shape[0]}; Number of features: {num_features}")
+
+    # List to collect trained models for ensemble evaluation.
+    ensemble_models: List[torch.nn.Module] = []
+
+    # Loop over the number of seeds specified for evaluation.
+    for seed_index in range(num_evaluation_seeds):
+        # Set a new seed by incrementing the base seed.
+        new_seed: int = base_seed + seed_index
+        config_dict["seed"] = new_seed  # Update global configuration seed.
+        set_seed(new_seed)
+        print(f"\nStarting training run {seed_index + 1}/{num_evaluation_seeds} with seed {new_seed}.")
+
+        # Build embedding modules for each feature.
+        embeddings: List[torch.nn.Module] = build_embeddings(num_features, config_dict)
+
+        # Build the backbone model (default: mlp).
+        model: BackboneModel = build_backbone_model(num_features, embeddings, config_dict)
+
+        # Initialize Trainer with the model, data, and full configuration.
+        trainer: Trainer = Trainer(model=model, data=data_bundle, config=config_dict)
+        best_val_metric: float = trainer.train()
+        print(f"Run {seed_index + 1} completed. Best validation metric: {best_val_metric:.4f}")
+
+        # Append the trained model to the ensemble list.
+        ensemble_models.append(model)
+
+    # Ensemble evaluation using the list of trained models.
+    evaluator: Evaluator = Evaluator(model=ensemble_models, data=data_bundle, config=config_dict)
+    eval_results: Dict[str, Any] = evaluator.evaluate()
+    print("\nFinal Evaluation Results:")
+    print(eval_results)
+
+
+if __name__ == "__main__":
+    main()
