@@ -2,6 +2,7 @@
 
 GPT_VERSION="o3-mini"
 
+# https://arxiv.org/abs/2203.05556
 PAPER_NAME="Piecewise-Linear-Encoder"
 PDF_PATH="../examples/ple-paper.pdf" # .pdf
 PDF_JSON_PATH="../examples/ple-paper.json" # .json
