@@ -1,7 +1,7 @@
 import json
 import os
 from tqdm import tqdm
-from utils import extract_planning, content_to_json, print_response
+from utils import extract_planning, content_to_json, print_response, task_artifact_filename
 import copy
 import sys
 from transformers import AutoTokenizer
@@ -213,15 +213,17 @@ for todo_file_name in tqdm(todo_file_lst):
 
 
     # save
-    with open(f'{artifact_output_dir}/{todo_file_name}_simple_analysis.txt', 'w', encoding='utf-8') as f:
+    analysis_artifact = task_artifact_filename(todo_file_name, "_simple_analysis.txt")
+    with open(os.path.join(artifact_output_dir, analysis_artifact), 'w', encoding='utf-8') as f:
         f.write(completion)
 
     done_file_lst.append(todo_file_name)
 
     # save for next stage(coding)
-    todo_file_name = todo_file_name.replace("/", "_") 
-    with open(f'{output_dir}/{todo_file_name}_simple_analysis_response.json', 'w', encoding='utf-8') as f:
+    response_artifact = task_artifact_filename(todo_file_name, "_simple_analysis_response.json")
+    with open(os.path.join(output_dir, response_artifact), 'w', encoding='utf-8') as f:
         json.dump(responses, f)
 
-    with open(f'{output_dir}/{todo_file_name}_simple_analysis_trajectories.json', 'w', encoding='utf-8') as f:
+    trajectories_artifact = task_artifact_filename(todo_file_name, "_simple_analysis_trajectories.json")
+    with open(os.path.join(output_dir, trajectories_artifact), 'w', encoding='utf-8') as f:
         json.dump(trajectories, f)

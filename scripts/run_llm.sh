@@ -1,4 +1,6 @@
 MODEL_NAME="deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct"
+set -euo pipefail
+
 TP_SIZE=2
 
 PAPER_NAME="Transformer"

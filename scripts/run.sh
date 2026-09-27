@@ -1,6 +1,7 @@
 # export OPENAI_API_KEY=""
+set -euo pipefail
 
-GPT_VERSION="o3-mini"
+GPT_VERSION="gpt-5.6-terra"
 
 PAPER_NAME="Transformer"
 PDF_PATH="../examples/Transformer.pdf" # .pdf
