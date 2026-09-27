@@ -5,7 +5,7 @@ from tqdm import tqdm
 import re
 import sys
 import copy
-from utils import extract_planning, content_to_json, extract_code_from_content, print_response, print_log_cost, load_accumulated_cost, save_accumulated_cost
+from utils import extract_planning, content_to_json, extract_code_from_content, print_response, print_log_cost, load_accumulated_cost, save_accumulated_cost, task_artifact_filename
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -153,7 +153,7 @@ detailed_logic_analysis_dict = {}
 retrieved_section_dict = {}
 for todo_file_name in todo_file_lst:
     # simple analysis
-    save_todo_file_name = todo_file_name.replace("/", "_")
+    save_todo_file_name = task_artifact_filename(todo_file_name, "")
 
     if todo_file_name == "config.yaml":
         continue
@@ -195,7 +195,7 @@ for todo_idx, todo_file_name in enumerate(tqdm(todo_file_lst)):
     # save
     # save_dir_name = f"{paper_name}_repo"
     os.makedirs(f'{output_repo_dir}', exist_ok=True)
-    save_todo_file_name = todo_file_name.replace("/", "_")
+    save_todo_file_name = task_artifact_filename(todo_file_name, "")
 
 
     # print and logging

@@ -3,6 +3,13 @@ import re
 import os
 from datetime import datetime
 
+
+def task_artifact_filename(task_name: str, suffix: str) -> str:
+    """Return a flat artifact filename for a task path and suffix."""
+    safe_task_name = task_name.replace("/", "_").replace("\\", "_")
+    return f"{safe_task_name}{suffix}"
+
+
 def extract_planning(trajectories_json_file_path):
     with open(trajectories_json_file_path) as f:
         traj = json.load(f)

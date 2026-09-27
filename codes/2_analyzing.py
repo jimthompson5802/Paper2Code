@@ -3,7 +3,7 @@ import json
 import os
 from tqdm import tqdm
 import sys
-from utils import extract_planning, content_to_json, print_response, print_log_cost, load_accumulated_cost, save_accumulated_cost
+from utils import extract_planning, content_to_json, print_response, print_log_cost, load_accumulated_cost, save_accumulated_cost, task_artifact_filename
 import copy
 
 import argparse
@@ -186,18 +186,20 @@ for todo_file_name in tqdm(todo_file_lst):
     total_accumulated_cost = temp_total_accumulated_cost
 
     # save
-    with open(f'{artifact_output_dir}/{todo_file_name}_simple_analysis.txt', 'w') as f:
+    analysis_artifact = task_artifact_filename(todo_file_name, "_simple_analysis.txt")
+    with open(os.path.join(artifact_output_dir, analysis_artifact), 'w') as f:
         f.write(completion_json['choices'][0]['message']['content'])
 
 
     done_file_lst.append(todo_file_name)
 
     # save for next stage(coding)
-    todo_file_name = todo_file_name.replace("/", "_") 
-    with open(f'{output_dir}/{todo_file_name}_simple_analysis_response.json', 'w') as f:
+    response_artifact = task_artifact_filename(todo_file_name, "_simple_analysis_response.json")
+    with open(os.path.join(output_dir, response_artifact), 'w') as f:
         json.dump(responses, f)
 
-    with open(f'{output_dir}/{todo_file_name}_simple_analysis_trajectories.json', 'w') as f:
+    trajectories_artifact = task_artifact_filename(todo_file_name, "_simple_analysis_trajectories.json")
+    with open(os.path.join(output_dir, trajectories_artifact), 'w') as f:
         json.dump(trajectories, f)
 
 save_accumulated_cost(f"{output_dir}/accumulated_cost.json", total_accumulated_cost)
