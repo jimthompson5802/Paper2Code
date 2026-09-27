@@ -244,6 +244,9 @@ def cal_cost(response_json, model_name):
 
         # gpt-5.6-terra
         "gpt-5.6-terra": {"input": 2.00, "cached_input": 0.20, "output": 12.00},
+
+        # gpt-5.4-mini
+        "gpt-5.4-mini": {"input": 0.75, "cached_input": 0.075, "output": 4.50},
     }
 
     
