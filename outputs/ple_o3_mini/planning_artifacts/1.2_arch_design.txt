@@ -1,0 +1,68 @@
+----------------------------------------
+[Implementation approach]
+We will build a reproducible deep learning system using PyTorch for model development and training, scikit-learn for data preprocessing (including quantile transformation and one-hot encoding), and Optuna for hyperparameter tuning. The system will support multiple embedding modules – a simple baseline linear layer, piecewise linear encoding (both quantile-based and target-aware variants), and periodic embeddings – which will be integrated into various backbone models (MLP, ResNet, Transformer). The overall architecture is designed to be modular and simple, with a main runner that handles dataset loading, model initialization, training, evaluation, and logging.
+
+----------------------------------------
+[File list]
+- main.py
+- dataset_loader.py
+- model.py
+- trainer.py
+- evaluation.py
+
+----------------------------------------
+[Data structures and interfaces]
+classDiagram
+    class Main {
+        +__init__(config: dict)
+        +run_experiment() -> None
+    }
+    class DatasetLoader {
+        +__init__(config: dict)
+        +load_data() -> tuple[Any, Any, Any]  "# returns (train, validation, test) datasets"
+    }
+    class Model {
+        +__init__(config: dict)
+        +build_embeddings(x: Tensor) -> Tensor
+        +forward(x: Tensor) -> Tensor
+    }
+    class Trainer {
+        +__init__(model: Model, data: tuple[Any, Any, Any], config: dict)
+        +train() -> None
+        +validate() -> dict
+    }
+    class Evaluation {
+        +__init__(model: Model, dataset: Any, config: dict)
+        +evaluate() -> dict
+    }
+    Main --> DatasetLoader
+    Main --> Trainer
+    Main --> Evaluation
+    Trainer --> Model
+    Evaluation --> Model
+
+----------------------------------------
+[Program call flow]
+sequenceDiagram
+    participant M as Main
+    participant DL as DatasetLoader
+    participant MD as Model
+    participant TR as Trainer
+    participant EV as Evaluation
+
+    M->>DL: Initialize DatasetLoader(config)
+    DL-->>M: Return (train, validation, test) datasets from load_data()
+    M->>MD: Initialize Model(config) [build embeddings internally]
+    M->>TR: Initialize Trainer(model, (train, validation, test), config)
+    TR->>MD: Call forward(x) for each batch during training loop
+    TR-->>M: Training completes (with early stopping based on validation)
+    M->>EV: Initialize Evaluation(model, test_dataset, config)
+    EV->>MD: Call forward(x) for evaluation
+    MD-->>EV: Return predictions
+    EV-->>M: Return evaluation metrics
+    M->>M: Log and save final results
+
+----------------------------------------
+[Anything UNCLEAR]
+The exact formulation of the periodic embedding function (e.g., whether to use sine only or both sine and cosine, and the details of the trainable parameters) is not fully specified. Additionally, the detailed architecture parameters for the ResNet and Transformer backbones and the dataset split ratios (if not provided in the supplementary material) require further clarification.
+

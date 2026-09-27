@@ -1,0 +1,235 @@
+Below is a comprehensive roadmap that outlines how to reproduce the experiments and methods described in the paper. This plan is designed to help you write the eventual Python code and set up a reproducible experimental pipeline. Some details (such as the exact architectural choices for the Transformer and ResNet backbones) must be adapted from the referenced work [13], and there is slight ambiguity in the precise form of Equation 2 (the periodic activation) that you should decide on based on best practices (e.g. using sin/cos functions). In any case, the following plan captures all the major details:
+
+──────────────────────────────
+1. OVERVIEW & KEY IDEAS
+
+• The paper argues that embeddings for numerical features are an underexplored degree of freedom in tabular deep learning.  
+• Two main embedding strategies are proposed:
+  – Piecewise Linear Encoding (PLE) with two variants:
+    ∙ Quantile-based PLE: uses empirical quantiles to obtain split boundaries.
+    ∙ Target-aware (tree-based) PLE: uses supervised discretization (similar to C4.5) per feature.
+  – Periodic Embeddings: Use periodic (sinusoidal) activations with trainable pre-activation coefficients (initialized with N(0, σ)) and a tunable multiplier “k”.  
+• The embeddings are then fed into different backbones (MLP, ResNet, Transformer) using a “Backbone-Embedding” pattern. For MLP-style models, feature embeddings are computed independently and then concatenated, while for Transformer-like models these tokenized embeddings are passed without extra mixing except that an additional linear layer may be applied to inject feature index information.
+
+──────────────────────────────
+2. METHODOLOGY – IMPLEMENTING THE EMBEDDING MODULES
+
+A. Baseline / Simple Differentiable Embeddings  
+  • Implement a simple linear layer (optionally with ReLU or LeakyReLU) on each numerical feature.  
+  • This “LR” module acts as a baseline.
+
+B. Piecewise Linear Encoding (PLE) Module  
+  • Compute bins for each numeric feature (each feature is processed independently):  
+   – Quantile Approach:  
+    ▪ Use the training set to compute empirical quantiles.
+    ▪ Remove any trivial (zero-width) bins.
+    ▪ Hyperparameter: number of quantiles (search space UniformInt[2, 256]).  
+   – Target-Aware (Tree-Based) Approach:  
+    ▪ Fit a one-dimensional decision tree on each feature using the target as guidance.
+    ▪ Use parameters similar to “C4.5 discretization”:
+     – Maximum number of leaves (UniformInt[2,256]),
+     – Minimum samples per leaf (UniformInt[1,128]), and
+     – Minimum information gain (LogUniform[1e-9, 0.01]).
+  • For each scalar value x, create the PLE encoding vector e = [e₁, …, e_T] according to Equation 1:
+   – e_t = 0 if x is below the (t–1)th bin boundary (with t > 1);
+   – e_t = 1 if x is above or equal to the t-th bin boundary (with t < T);
+   – Otherwise, compute a linear interpolation: (x – bₜ₋₁) / (bₜ – bₜ₋₁).
+  • The final feature embedding is given by a trainable linear combination:
+    fᵢ(x) = v₀ + Σₜ eₜ · vₜ  
+    – Here, v₀ and vₜ are learnable parameters (embedding vectors) for that feature.
+  • Optionally, experiment with additional differentiable layers on top of the PLE output (e.g., adding an extra linear or ReLU block).
+
+C. Periodic Embedding Module  
+  • For each numerical feature, implement a transformation that uses periodic activations:
+   – Example formulation: fᵢ(x) = Linear( sin( k · x + cᵢ ) )  
+    – k is a tunable hyperparameter (UniformInt[1, 128]).
+    – cᵢ is a trainable parameter for each feature (initialize via N(0, σ) where σ is tuned).
+  • Like in the PLE modules, the result can optionally be enhanced by stacking an extra differentiable (e.g., linear) layer that “wraps” the periodic module.
+  • Note: The paper’s Equation 2 is brief; you need to choose a periodic function (sin, cosine, or both) and then add the additional linear transformation as suggested.
+
+──────────────────────────────
+3. EXPERIMENTAL SETUP
+
+A. Datasets & Preprocessing  
+  • Use eleven public tabular datasets (as described):
+   – Gesture Phase Prediction
+   – Churn Modelling (e.g., from Kaggle)
+   – California Housing
+   – House 16H
+   – Adult (income estimation)
+   – Otto Group Product Classification
+   – Higgs
+   – Santander Customer Transaction Prediction
+   – Facebook Comments
+   – Covertype
+   – Microsoft/MSLR-WEB10K (treat ranking as regression)
+  • Synthetic GBDT-Friendly Dataset:
+   – 10,000 samples, 8 features (sampled from N(0, 1))
+   – Target is generated using 16 decision trees of depth 6.
+  • Preprocessing:  
+   – For all datasets except Otto, apply quantile transformation (scikit-learn’s QuantileTransformer) on numeric features.
+   – Standardize regression targets.
+   – For categorical features (in non–tree-based models), use one-hot encoding (CatBoost has inbuilt support).
+  • Data Splits:  
+   – Split the dataset into training, validation, and test sets
+   – The training set is used to compute quantiles (or train the decision tree for target-aware bins) and learn model parameters.
+   – Use the validation set for early stopping and hyperparameter tuning.
+   – Use the test set strictly for reporting final performance.
+  • Batch Sizes: Choose predefined values per dataset (details in Appendix C of the paper).
+
+B. Backbones  
+  • Implement three types of backbones:
+   1. MLP  
+    – An MLP of four layers (e.g., 256 units per layer) is mentioned for the synthetic data.
+    – The embeddings for each numeric feature are concatenated.
+   2. ResNet  
+    – Incorporates residual connections; refer to prior work [13] for specific architecture details.
+   3. Transformer (FT-Transformer)  
+    – The tokenized embeddings are used directly, and if necessary, a dedicated linear layer is added to inject feature-index information.
+  • For each backbone, allow the “embedding module” to be swapped (baseline linear, PLE variants, periodic).
+
+C. Training Details  
+  • Loss Functions:  
+   – Use cross-entropy for classification problems.
+   – Use mean squared error (MSE) for regression.
+  • Optimizer: Use AdamW for all models.
+  • Learning Rate: Tune via hyperparameter search; use log-uniform distributions as suggested.
+  • Early Stopping:  
+   – Monitor validation performance.
+   – Patience = 16 epochs (stop training after 16+1 epochs with no improvement).
+  • Repeat each experiment with 15 different random seeds to get reliable mean and standard deviation statistics.
+
+D. Hyperparameter Tuning  
+  • Use Optuna with the Tree-Structured Parzen Estimator (TPE) algorithm.  
+  • Define search spaces:  
+   – Output dimensions of linear layers (UniformInt[1, 128]).  
+   – For quantile-based PLE: number of quantiles (UniformInt[2, 256]).  
+   – For tree-based PLE: max number of leaves (UniformInt[2,256]), minimum items per leaf (UniformInt[1,128]), minimum information gain (LogUniform[1e-9, 0.01]).  
+   – For the periodic module: k (UniformInt[1,128]) and initialization σ for cᵢ (value to be tuned).  
+   – Backbone-specific parameters: number of layers, hidden unit sizes, dropout rates, learning rate (log-uniform), weight decay, etc.
+  • Tune based on the performance on the validation set; do not access the test set during tuning.
+
+E. Evaluation Metrics  
+  • Classification tasks: Report accuracy (Acc.)  
+  • Regression tasks: Report root-mean-square error (RMSE)  
+  • For each configuration, report average performance and standard deviations over 15 random seeds.
+  • Also, evaluate ensemble predictions by splitting the 15 individual runs into three disjoint groups and averaging (similar to what is done in Table 6).
+
+──────────────────────────────
+4. CODE STRUCTURE & IMPLEMENTATION ROADMAP
+
+A. Environment Setup  
+  • Use a deep learning framework (PyTorch or TensorFlow).  
+  • Python libraries required: NumPy, Pandas, scikit-learn, Optuna, and logging libraries.  
+  • Ensure reproducibility via fixed random seeds and logging of versions.
+
+B. Modules & Components Outline
+
+I. Data Processing Module  
+  1. Dataset Loader:  
+   – Implement functions to download/load each dataset.
+   – Split data into train/validation/test sets.
+  2. Preprocessing:  
+   – Apply quantile transformation (sklearn’s QuantileTransformer) for numeric features.
+   – Standardize regression targets.
+   – One-hot encode categorical variables (unless using CatBoost).
+
+II. Embedding Modules  
+  1. Baseline Embedding:  
+   – A simple linear mapping possibly wrapped with an activation function.
+  2. Piecewise Linear Encoding (PLE):  
+   – Create a PLE class that, during initialization with training data, computes bin boundaries for each numeric feature using:
+    a. Quantile-based method or
+    b. Decision tree (target-aware method) as a one-dimensional discretizer.
+   – In the forward pass, for an input x, compute the vector of “bin activations” (using zero, one, or linear interpolation as per Equation 1).
+   – Multiply the resulting vector by learnable embedding weights (v₀ and vₜ) to get fᵢ(x).
+  3. Periodic Embedding:  
+   – Implement a module that, for each feature, computes:  
+    x → (k * x + cᵢ) → periodic function (e.g., sin()) → Optional linear layer.
+   – cᵢ is trainable and initialized from N(0,σ); k is a tunable multiplier.
+   – Allow stacking an extra linear layer after the periodic activation.
+  4. Combination Options:  
+   – Allow combining the embedding module with additional differentiable layers (e.g., “LRLR” or “PLRLR” as in the paper) to balance complexity and efficiency.
+
+III. Backbone Model Implementations  
+  1. MLP:  
+   – Standard fully connected network that takes concatenated embeddings.
+   – Make architecture configurable (number of layers, hidden sizes, dropout).
+  2. ResNet:  
+   – Implement residual blocks with skip connections.
+   – Follow the guidelines or adapt from related literature (reference [13]).
+  3. Transformer (FT-Transformer):  
+   – Treat each numeric feature’s embedding as a token.
+   – Optionally add a linear layer to fuse feature-index information.
+   – Follow the hyperparameter suggestions or replicate from [13].
+
+IV. Training Loop & Evaluation  
+  1. Write a generic training loop that:  
+   – Accepts a model, optimizer (AdamW), and appropriate loss function.
+   – Monitors training and validation performance per epoch.
+   – Implements early stopping using the patience criteria (e.g. 16 epochs without improvement).
+   – Logs the results per epoch.
+  2. Validation & Test Evaluation:  
+   – At the end of training, evaluate on the test set and record metrics.
+   – For each configuration, run 15 experiments with different random seeds.
+  3. Ensemble Implementation:  
+   – Group the 15 runs (e.g., into three groups) and average predictions to produce ensemble outputs.
+   – Compare ensemble performance to individual runs.
+
+V. Hyperparameter Tuning Module  
+  1. Set up Optuna studies for:  
+   – Backbone-specific parameters (layers, sizes, dropouts, learning rates).
+   – Embedding module parameters (number of bins, decision tree splitting hyperparameters, k, σ, and output dimensions).
+  2. Define search spaces exactly as described, and run tuning using the validation set.
+  3. Log and save the best configuration for each model variant.
+
+VI. Logging & Reproducibility  
+  • Log every run along with the random seed, hyperparameters, training curves, and evaluation metrics.  
+  • Save model checkpoints, especially the best-performing configuration on validation.  
+  • Document library versions and ensure reproducible data splits.
+
+──────────────────────────────
+5. EXPERIMENT SCHEDULING & REPORTING
+
+A. Single-model experiments:  
+  – Train each model variant (e.g., MLP, MLP-LR, MLP-Q-LR, MLP-T-LR, MLP-P, MLP-PLR, etc.) on every dataset.  
+  – Evaluate using 15 random seeds and report mean ± standard deviation.
+
+B. Ensemble experiments:  
+  – Form ensembles from the 15 runs as per paper’s protocol.
+  – Compare aggregate performance against baseline GBDT models (CatBoost, XGBoost).
+
+C. Ablation Studies:  
+  – Compare the effect of different embedding choices (e.g., piecewise linear vs. binary vs. one-blob variants) following Table 8 and Table 9 in the paper.
+  – Study sensitivity to preprocessing (vanilla MLP vs. MLP with PLE, with and without quantile transformations).
+
+D. Synthetic Dataset Experiment:  
+  – Recreate the synthetic GBDT-friendly dataset as described in section D.1.
+  – Experiment with varying the number of bins in the quantile-based PLE and plot RMSE vs. number of bins (cf. Figure 5).
+
+E. Result Reporting  
+  – Prepare tables similar to Tables 3–6 that summarize performance metrics.  
+  – Plot training curves and performance vs. hyperparameter plots (e.g., effect of number of bins).
+
+──────────────────────────────
+6. AMBIGUITIES & DECISION POINTS
+
+• The exact formulation of Equation 2 (for periodic embeddings) is not fully spelt out. Decide on a function such as:  
+  fᵢ(x) = Linear( sin(k · x + cᵢ) )  
+or use a composite function (e.g., use both sine and cosine concatenated) if that better reflects the intended expressivity.  
+• The backbone architectures (especially ResNet and Transformer) are referenced from [13]. If the full details are not available, approximate these architectures based on published details or prior implementations.  
+• Details such as exact batch sizes for each dataset are provided in Appendix C of the paper. If not available, choose reasonable defaults and document any differences.
+
+──────────────────────────────
+7. SUMMARY
+
+Your roadmap is broken into five major components:
+ 1. Data preparation and preprocessing.  
+ 2. Implementation of various embedding modules (baseline, PLE with quantile/target-aware binning, and periodic embeddings).  
+ 3. Building backbone architectures (MLP, ResNet, Transformer) that accept these embeddings.  
+ 4. Designing the training loop, hyperparameter tuning using Optuna, and evaluation protocols (including 15-seed runs and ensemble formation).  
+ 5. Reporting results and performing ablations to compare with GBDT baselines.
+
+By following this detailed plan, you will be able to structure your implementation, replicate the experiments, and eventually compare the empirical performance of the proposed embedding schemes with standard approaches.
+
+This roadmap should give you a strong foundation before writing any final code.

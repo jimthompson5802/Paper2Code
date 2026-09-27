@@ -1,0 +1,140 @@
+# main.py – Logic Analysis
+
+This file is the central entry point for the experiment runner. Below is a detailed step‐by‐step logic analysis explaining how the experiment pipeline will be orchestrated, in accordance with the paper, plan, design, task, and configuration file.
+
+──────────────────────────────
+1. Read and Parse Configuration
+
+• At startup, the program will load the configuration from “config.yaml”.  
+• The configuration dictionary (config) contains settings for training, embeddings, backbones, preprocessing, hyperparameter tuning, and evaluation.  
+• Key config fields include:
+ – training: optimizer (AdamW), learning_rate (default 1e-4, within tuning range), batch_size (128), max_epochs (200), patience (16), and seed_runs (15).  
+ – embeddings: type for baseline (“linear”), PLE parameters (method: “quantile” and num_bins: 32), and periodic parameters (k: 16, sigma: 0.1).  
+ – backbone: type (e.g., “MLP”, “ResNet”, or “Transformer”) and backbone-specific parameters (e.g., MLP’s num_layers: 4, hidden_dim: 256).  
+ – preprocessing: flags to trigger quantile transformation, target standardization, and one-hot encoding for categoricals.  
+ – hyperparameter_tuning: whether to run tuning via Optuna and search spaces for parameters.  
+ – evaluation: specifies metrics (accuracy for classification, RMSE for regression) and ensemble grouping (groups: 3).
+
+──────────────────────────────
+2. Set Up Logging and Random Seed Management
+
+• Initialize logging to record progress, hyperparameter settings, training curves, and final metrics.  
+• Use a helper function to set random seeds (e.g., Python’s random, NumPy, and torch manual seed) for reproducibility.  
+• The number of independent runs (15 seeds, as per config) will be iterated over.
+
+──────────────────────────────
+3. Optional Hyperparameter Tuning
+
+• If hyperparameter_tuning.enabled is true then:
+ – Define an Optuna “objective” function that:
+  ◦ Reads the current trial’s suggestions (learning_rate, output_dim, num_bins, periodic_k, periodic_sigma, etc.) from the trial object using the distributions defined in the config.
+  ◦ Updates the config for the current run accordingly.
+  ◦ Initializes DatasetLoader, Model, and Trainer instances.
+  ◦ Trains the model on the training set and evaluates on the validation set (using Trainer.validate()).
+  ◦ Returns the validation metric (e.g., cross-entropy loss or RMSE) as the objective value.
+ – Run the Optuna study for the desired number of trials.
+ – Update the experiment’s global config with the best hyperparameters from the study.
+• This step ensures that our experiment uses tuned hyperparameters before proceeding with seed-based runs.
+
+──────────────────────────────
+4. Data Loading and Preprocessing
+
+• Create an instance of the DatasetLoader class, passing in the config.  
+• Call DatasetLoader.load_data(), which is responsible for:
+ – Downloading or reading the dataset from local/online sources.
+ – Splitting the data into train, validation, and test sets.
+ – Applying preprocessing:
+  ◦ Quantile transformation on numeric features if enabled.
+  ◦ Standardization of regression targets.
+  ◦ One-hot encoding of categorical features.
+ – Computing and caching bin boundaries for the Piecewise Linear Encoding (PLE) module (using either quantile‐ or target-aware methods) – these boundaries are computed based solely on the training set.
+
+• The loader returns a tuple: (train_dataset, validation_dataset, test_dataset).
+
+──────────────────────────────
+5. Model Initialization – Building Embeddings and Backbone
+
+• Create an instance of the Model class, supplying the config.  
+• The Model is designed to:
+ – Read the “embeddings” section from the config and build the chosen module:
+  ◦ If baseline: initialize a simple linear transformation (with output_dim, activation if any).
+  ◦ If PLE: build a piecewise linear encoding module that uses the computed bin boundaries and then applies a learned linear combination (v₀ + Σ eₜ · vₜ). This module uses the method (“quantile” by default, or “target_aware” if specified) and the number of bins.
+  ◦ If periodic: implement a module that transforms each numeric feature input by applying a periodic function – for example, using f(x) = Linear( sin(k * x + c) ) where k is tunable (config value “periodic.k”) and c is a trainable bias initialized with N(0, sigma) (using config “periodic.sigma”). (Note: exact choice of sine only or sine+cosine is to be decided based on experimental best practices.)
+ – Based on the “backbone” type in the config (MLP, ResNet, Transformer), set up the overall network architecture:
+  ◦ For MLP: each feature’s embedding is computed and then concatenated to form the input to a fully connected network.
+  ◦ For Transformer: treat each feature embedding as a “token” and, if required, add a linear layer to inject positional (feature-index) information.
+  ◦ For ResNet: use residual blocks as per guidelines from [13].
+• The Model.build_embeddings(x) method is called internally during each forward pass to compute feature embeddings before passing them through the backbone network.
+
+──────────────────────────────
+6. Training Loop with Trainer
+
+• Instantiate the Trainer class with:
+ – The constructed Model.
+ – The dataset tuple (train, validation, test) returned by DatasetLoader.
+ – The entire configuration.
+• The Trainer class will:
+ – Set up a training loop using the AdamW optimizer (with learning_rate as per config/tuning).
+ – Use the appropriate loss function (cross-entropy for classification, MSE for regression) as specified in config.
+ – Process the training data in batches (batch size comes from config).
+ – Periodically call Model.forward(x) to process batches.
+ – Monitor the validation performance after each epoch.
+ – Implement early stopping based on the patience parameter (16 epochs with no validation improvement).
+ – (Optionally) Save model checkpoints when the validation metric improves.
+
+──────────────────────────────
+7. Running Experiments Across Multiple Seed Runs
+
+• For each run (total of 15 runs as per config “seed_runs”):
+ – Set the run-specific random seed.
+ – Reload/reinitialize the DatasetLoader (if needed) to ensure consistent splitting per seed.
+ – Reinitialize the Model and Trainer (ensuring that each run is independent).
+ – Call Trainer.train() and then Trainer.validate() to obtain seed-specific validation performance.
+ – After training, create an Evaluation instance with the best (or final) model state and the test dataset.
+ – Call Evaluation.evaluate() to compute the test metrics (accuracy or RMSE).
+ – Store each seed’s test performance (and optionally predictions) for later aggregation.
+
+──────────────────────────────
+8. Evaluation and Ensemble Aggregation
+
+• After completing all seed runs:
+ – Aggregate the metrics over all 15 runs to compute means and standard deviations.
+ – If ensemble evaluation is configured (ensemble.groups: 3), split the 15 runs into 3 disjoint groups.
+ – For each group, average the predictions from the individual runs to produce an ensemble prediction.
+ – Evaluate the ensemble predictions using the appropriate metric.
+ – Log ensemble performance metrics alongside individual run statistics.
+
+──────────────────────────────
+9. Final Logging and Reporting
+
+• Log the following information:
+ – Hyperparameter settings (either default or tuned via Optuna).
+ – Training curves/metrics across epochs and seeds.
+ – Final validation and test metrics (mean ± std over 15 runs).
+ – Ensemble results.
+• Optionally, save the final model checkpoint and results to disk for reproducibility.
+
+──────────────────────────────
+10. Program Call Flow Recap
+
+The overall call flow follows the design’s sequence diagram:
+ Main → DatasetLoader: Initialize and load (train, validation, test)
+ Main → Model: Initialize with embeddings (built internally) and backbone per config
+ Main → Trainer: Run training loop with calls to Model.forward() for each batch; use early stopping based on validation
+ Main → Evaluation: Use the trained model to evaluate on test set; aggregate metrics and form ensembles
+ Main: Log and save final results
+
+──────────────────────────────
+11. Remaining Ambiguities and Decision Points
+
+• The precise formulation of the periodic embedding function (e.g., whether to use sine or both sine and cosine) remains a design decision. The chosen formulation should be clearly documented and consistent across experiments.  
+• Detailed architectural parameters for ResNet and Transformer backbones are approximated as per [13] if precise details are not available.  
+• Dataset split ratios and file formats should be confirmed with available supplementary materials or chosen as reasonable defaults if not explicitly provided.
+
+──────────────────────────────
+Summary
+
+• main.py orchestrates the entire experiment: it reads the configuration, optionally performs hyperparameter tuning via Optuna, loads and preprocesses data, builds the Model (with the selected embedding module and backbone), trains via the Trainer (with early stopping and repeated runs for reproducibility), and finally evaluates through the Evaluation module (including ensemble averaging).  
+• All modules interact according to the predefined interfaces in the design and maintain a modular, reproducible deep learning system that faithfully replicates the methods and experiments described in the paper.
+
+This logic analysis will guide writing the actual code in main.py, ensuring that all components and interactions adhere to both the paper’s methodology and our system’s design.

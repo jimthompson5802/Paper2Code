@@ -1,0 +1,101 @@
+Below is a detailed logic analysis for dataset_loader.py. This module is responsible for loading raw tabular data (from local or online sources), splitting it consistently into training, validation, and test sets, and applying all necessary preprocessing. In addition, it computes and caches the bin‐boundaries used by the piecewise linear encoding (PLE) modules—either by a quantile‐based method or a supervised (target‐aware) method. Here’s an outline of the internal logic and design flow:
+
+──────────────────────────────
+1. Class Initialization (DatasetLoader.__init__)
+──────────────────────────────
+• Accept a configuration dictionary (config) that contains all the preprocessing flags and hyperparameters. Key settings include:
+ – Preprocessing options:
+  ○ quantile_transform (boolean): whether to apply scikit-learn’s QuantileTransformer to numerical features.
+  ○ standardize_targets (boolean): whether to standardize regression targets.
+  ○ one_hot_encode_categoricals (boolean): whether to one‐hot encode categorical features.
+ – Embedding settings needed for computing bin boundaries:
+  ○ piecewise_linear_encoding.method: either "quantile" or "target_aware" (default is "quantile").
+  ○ piecewise_linear_encoding.num_bins: the default number of bins (e.g., 32) to use when using the quantile‐based approach.
+• Optionally set a random seed (the calling Main routine or trainer might already do this) to ensure reproducible splits.
+• Initialize instance variables such as self.config, and placeholders for the computed bin boundaries (e.g., self.bin_boundaries).
+
+──────────────────────────────
+2. Data Loading (load_data method)
+──────────────────────────────
+The load_data() method will:
+ A. Load Raw Dataset:
+  – Read the dataset from a local file or online resource using, for example, pandas.read_csv.
+  – This step may involve checking if the file exists locally; if not, it could trigger a download (depending on implementation).
+  – The raw data (as a DataFrame) will include both numerical and categorical columns as well as a target column.
+ B. Identify Feature Types:
+  – Automatically (or using pre-specified metadata) determine which columns are numerical and which are categorical.
+  – Save these lists for later use by the model and for preprocessing.
+ C. Split the Data:
+  – Use a reproducible splitting strategy (for example, using sklearn’s train_test_split) to partition the data into three disjoint subsets:
+   • Training set – used for fitting the preprocessing transforms and computing bin boundaries.
+   • Validation set – used for early stopping/hyperparameter tuning.
+   • Test set – used strictly for final evaluation.
+  – The actual split ratios may be set by default values or extended via configuration.
+ D. Preprocessing of Features:
+  (1) Numerical Features:
+   – If config.preprocessing.quantile_transform is true, create a QuantileTransformer (from scikit-learn) that will be fitted using only the training numerical features.
+   – Transform all splits (train, validation, test) using the fitted transformer, ensuring that the fit is not contaminated by validation or test data.
+  (2) Categorical Features:
+   – If config.preprocessing.one_hot_encode_categoricals is true, fit a one-hot encoding model (using pandas.get_dummies or OneHotEncoder from scikit-learn) on the training set categorical columns.
+   – Apply the transformation to both validation and test sets, keeping the same mapping.
+ E. Preprocessing of Targets:
+  – For regression tasks, if config.preprocessing.standardize_targets is true, fit a StandardScaler (or similar) on the training target values and transform targets for validation and test sets.
+  – For classification tasks, targets may be left unchanged.
+ F. Convert Data to the Desired Format:
+  – Depending on later usage (for example, converting to PyTorch Tensors), the data (features and targets) should be converted from pandas DataFrames/NumPy arrays into the expected format.
+  – Retain separate structures or dictionaries keyed by "numerical", "categorical", and "target" to facilitate subsequent processing.
+
+──────────────────────────────
+3. Computing and Caching Bin Boundaries for PLE
+──────────────────────────────
+Since the piecewise linear encoding must be computed from the training data, the DatasetLoader should have dedicated internal methods:
+ A. If method = "quantile":
+  – For each numeric feature in the training set, compute bin boundaries (“b_t”) using empirical quantiles.
+   ○ For example, use numpy.percentile or pandas’ quantile function on the raw “x” values of that feature.
+   ○ Use a set of quantile probabilities determined by the number of bins (e.g., dividing [0, 1] into num_bins equal parts).
+  – Remove or filter out any trivial bins (where two consecutive boundaries are equal, leading to zero width).
+  – Save the result as: a dictionary mapping feature names (or indices) to a sorted list/array of boundaries.
+ B. If method = "target_aware":
+  – For each numerical feature, fit a one-dimensional decision tree using only that feature as input and the target as the guidance.
+   ○ Use an appropriate tree (DecisionTreeClassifier for classification tasks or DecisionTreeRegressor for regression tasks).
+   ○ Use hyperparameters such as maximum number of leaves, minimum samples per leaf, and minimum information gain. (Even if these are not explicitly in config, they should be set to reasonable defaults or be part of hyperparameter tuning later.)
+  – Extract the thresholds (split points) used by the decision tree.
+  – Augment these thresholds by adding the minimum and maximum observed training values to cover the entire range.
+  – Again, store these boundaries in a dictionary keyed by feature.
+ C. Cache:
+  – Store the computed bin boundaries in an instance variable (like self.bin_boundaries) so that they can be reused across training without being recomputed.
+  – Optionally, provide a method get_bin_boundaries() that returns the cached dictionary (this can be accessed by the embedding module later).
+
+──────────────────────────────
+4. Returning the Processed Data
+──────────────────────────────
+• The load_data() method ultimately returns a tuple (train, validation, test) where each element is structured (for example, as dictionaries or custom objects) containing:
+  – Preprocessed numerical features.
+  – Processed categorical features.
+  – Target variable (possibly standardized for regression).
+• It may also include meta-information such as:
+  – The list of numeric and categorical feature names.
+  – The computed bin boundaries (if these are not embedded into the model internals already, they should be accessible for embedding construction).
+
+──────────────────────────────
+5. Error Handling and Logging
+──────────────────────────────
+• Ensure that the code verifies the existence of data files or URLs and raises meaningful errors if data cannot be loaded.
+• Log major steps (e.g., “Loading raw data”, “Splitting data into train/val/test”, “Fitting quantile transformer on numeric features”, “Computing bin boundaries for PLE”) for debugging and reproducibility.
+• Use try/except blocks around critical operations (such as file reading or tree fitting) to catch and log exceptions.
+
+──────────────────────────────
+Summary
+──────────────────────────────
+The DatasetLoader class in dataset_loader.py is a central component to:
+ 1. Load the raw tabular dataset(s) from disk (or online).
+ 2. Identify and separate numerical and categorical features.
+ 3. Split the data reproducibly into training, validation, and test sets.
+ 4. Apply preprocessing:
+  – Quantile transformation of numerical features,
+  – One-hot encoding of categorical features,
+  – Standardization of targets (for regression).
+ 5. Compute and cache bin boundaries for each numerical feature according to the chosen piecewise linear encoding method (quantile-based or target-aware) using only the training set.
+These preprocessing steps assure that subsequent modules (Model, Trainer, Evaluation) receive data in the required format and that the data splits and computations do not leak information from validation or test sets. The computed bin boundaries will be critical inputs for the embedding components that follow in the model module.
+
+This logic analysis outlines the step‐by‐step processing, modular functions, and design considerations that will guide the implementation of dataset_loader.py in a reproducible and clear manner.

@@ -1,15 +1,14 @@
 # export OPENAI_API_KEY=""
-set -euo pipefail
 
-GPT_VERSION="gpt-5.6-terra"
+GPT_VERSION="o3-mini"
 
 # https://arxiv.org/abs/2203.05556
 PAPER_NAME="Piecewise-Linear-Encoder"
 PDF_PATH="../examples/ple-paper.pdf" # .pdf
 PDF_JSON_PATH="../examples/ple-paper.json" # .json
 PDF_JSON_CLEANED_PATH="../examples/ple-paper_cleaned.json" # _cleaned.json
-OUTPUT_DIR="../outputs/ple_gpt_5_6"
-OUTPUT_REPO_DIR="../outputs/ple_gpt_5_6_repo"
+OUTPUT_DIR="../outputs/ple_o3_mini"
+OUTPUT_REPO_DIR="../outputs/ple_o3_mini_repo"
 
 mkdir -p $OUTPUT_DIR
 mkdir -p $OUTPUT_REPO_DIR
