@@ -1,14 +1,14 @@
 # export OPENAI_API_KEY=""
 set -euo pipefail
 
-GPT_VERSION="gpt-5.6-terra"
+GPT_VERSION="gpt-5.4-mini"
 
-PAPER_NAME="Transformer"
-PDF_PATH="../examples/Transformer.pdf" # .pdf
-PDF_JSON_PATH="../examples/Transformer.json" # .json
-PDF_JSON_CLEANED_PATH="../examples/Transformer_cleaned.json" # _cleaned.json
-OUTPUT_DIR="../outputs/Transformer"
-OUTPUT_REPO_DIR="../outputs/Transformer_repo"
+PAPER_NAME="multi-spectral-imaging"
+PDF_PATH="../../ml-papers-to-code/multi-spectral-imaging/1471-2121-8-S1-S8.pdf" # .pdf
+PDF_JSON_PATH="../../ml-papers-to-code/multi-spectral-imaging/1471-2121-8-S1-S8.json" # .json
+PDF_JSON_CLEANED_PATH="../../ml-papers-to-code/multi-spectral-imaging/1471-2121-8-S1-S8-cleaned.json" # _cleaned.json
+OUTPUT_DIR="../../ml-papers-to-code/multi-spectral-imaging/paper2code2"
+OUTPUT_REPO_DIR="../../ml-papers-to-code/multi-spectral-imaging/repo2"
 
 mkdir -p $OUTPUT_DIR
 mkdir -p $OUTPUT_REPO_DIR
